@@ -19,7 +19,6 @@ export default async function PublicBotPage({ params }: { params: Promise<{ slug
 
   return (
     <div className="fixed inset-0 w-screen h-screen bg-[#0a0a0a] text-white overflow-hidden">
-      {/* @ts-expect-error - Using class ErrorBoundary component in React 19 types */}
       <ErrorBoundary fallback={<div className="p-4 text-red-500">Something went wrong while rendering the chat.</div>}>
         <ChatClient
           bot={{
