@@ -6,6 +6,12 @@ declare module 'react-syntax-highlighter' {
 		wrapLines?: boolean;
 		wrapLongLines?: boolean;
 		showLineNumbers?: boolean;
+		// Additional commonly used props in react-syntax-highlighter
+		customStyle?: React.CSSProperties;
+		useInlineStyles?: boolean;
+		PreTag?: React.ElementType;
+		CodeTag?: React.ElementType;
+		lineProps?: React.HTMLAttributes<HTMLElement> | ((lineNumber: number) => React.HTMLAttributes<HTMLElement>);
 		children?: React.ReactNode;
 	}
 	export const Prism: React.ComponentType<SyntaxHighlighterProps>;
