@@ -1,15 +1,24 @@
 "use client";
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-// Ensure env vars are present and typed as strings
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Missing Supabase env vars: NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
+// Lazily create the client so we don't throw during build or import time on Vercel
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').toString();
+const supabaseKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').toString();
+let supabase: SupabaseClient | null = null;
+
+function ensureClient(): SupabaseClient {
+  if (!supabase) {
+    if (!supabaseUrl || !supabaseKey) {
+      // Throw only when the code path is actually executed at runtime, not at import/build time
+      throw new Error(
+        'Supabase env vars missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment (e.g., Vercel Project Settings → Environment Variables).'
+      );
+    }
+    supabase = createClient(supabaseUrl, supabaseKey);
+  }
+  return supabase;
 }
-
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export interface Chatbot {
   // id may exist in the table; keep optional to avoid type friction
@@ -20,6 +29,7 @@ export interface Chatbot {
 }
 
 export const createChatbot = async (name: string, logic: string, instructions: string): Promise<Chatbot[]> => {
+  const supabase = ensureClient();
   const { data, error } = await supabase
     .from('chatbots')
     .insert([{ name, logic, instructions }])
@@ -33,6 +43,7 @@ export const createChatbot = async (name: string, logic: string, instructions: s
 };
 
 export const getChatbotById = async (id: number): Promise<Chatbot | null> => {
+  const supabase = ensureClient();
   const { data, error } = await supabase
     .from('chatbots')
     .select('*')
@@ -49,6 +60,7 @@ export const getChatbotById = async (id: number): Promise<Chatbot | null> => {
 };
 
 export const getChatbots = async (): Promise<Chatbot[]> => {
+  const supabase = ensureClient();
   const { data, error } = await supabase
     .from('chatbots')
     .select('*');
@@ -61,6 +73,7 @@ export const getChatbots = async (): Promise<Chatbot[]> => {
 };
 
 export const updateChatbot = async (id: number, updates: Partial<Chatbot>): Promise<Chatbot[]> => {
+  const supabase = ensureClient();
   const { data, error } = await supabase
     .from('chatbots')
     .update(updates)
@@ -75,6 +88,7 @@ export const updateChatbot = async (id: number, updates: Partial<Chatbot>): Prom
 };
 
 export const deleteChatbot = async (id: number): Promise<Chatbot[]> => {
+  const supabase = ensureClient();
   const { data, error } = await supabase
     .from('chatbots')
     .delete()
