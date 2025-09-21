@@ -1,6 +1,9 @@
 
 "use client";
 
+// This page depends on client-only APIs (e.g., useSearchParams) and should not be prerendered.
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getChatbotById, type Chatbot } from '../api/chat/supabaseClient';
