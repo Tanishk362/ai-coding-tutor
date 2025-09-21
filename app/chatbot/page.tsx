@@ -4,7 +4,7 @@
 // This page depends on client-only APIs (e.g., useSearchParams) and should not be prerendered.
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getChatbotById, type Chatbot } from '../api/chat/supabaseClient';
 
@@ -16,7 +16,16 @@ interface Message {
 // Exporting a plain function instead of a React.FC constant helps Next.js
 // infer the correct App Router types for the page and avoids type mismatch
 // errors in the generated .next/types/validator.ts.
+// Render a Suspense boundary at the page level so React can bail out to CSR safely
 export default function PremiumChatbot() {
+  return (
+    <Suspense fallback={<div style={{ padding: '32px', textAlign: 'center' }}>Loading…</div>}>
+      <PremiumChatbotInner />
+    </Suspense>
+  );
+}
+
+function PremiumChatbotInner() {
   const searchParams = useSearchParams();
   const botIdParam = searchParams.get('botId');
   const [chatbot, setChatbot] = useState<Chatbot | null>(null);
