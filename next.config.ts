@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import path from "path";
 
 const nextConfig: NextConfig = {
   // Reduce double-invoked effects in development to improve perceived performance
@@ -8,8 +7,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // Silence workspace root inference warnings by explicitly setting the root
-  outputFileTracingRoot: path.join(__dirname, ".."),
+  // Use default output file tracing root to avoid Vercel path issues
 };
 
 export default nextConfig;
