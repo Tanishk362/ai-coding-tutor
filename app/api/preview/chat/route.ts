@@ -5,9 +5,6 @@ import { buildSystemPrompt } from "@/src/lib/prompt";
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "Server missing OpenAI API key." }, { status: 500 });
-    }
     const { bot, messages } = (await req.json()) as {
       bot: { name: string; directive?: string; knowledge_base?: string; model?: string; temperature?: number };
       messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
@@ -20,6 +17,11 @@ export async function POST(req: NextRequest) {
       directive: bot.directive,
       knowledge_base: bot.knowledge_base,
     });
+    if (!apiKey) {
+      const last = messages[messages.length - 1]?.content || "";
+      const reply = `🧪 Mock preview reply (no OPENAI_API_KEY). Bot: ${bot.name}\nUser: ${last}`;
+      return NextResponse.json({ reply });
+    }
     const openai = new OpenAI({ apiKey });
     const completion = await openai.chat.completions.create({
       model: bot.model || "gpt-4o-mini",

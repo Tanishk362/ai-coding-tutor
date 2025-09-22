@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getChatbots, softDeleteChatbot } from "@/src/data/chatbots";
 
@@ -46,7 +47,7 @@ export default function ChatbotsListPage() {
                 <td className="p-2">{new Date(b.updated_at).toLocaleString()}</td>
                 <td className="p-2">{b.is_public ? "Yes" : "No"}</td>
                 <td className="p-2 space-x-2">
-                  <a href={`/admin/chatbots/${b.id}`} className="underline">Edit</a>
+                  <Link href={`/admin/chatbots/${b.id}`} className="underline">Edit</Link>
                   <button
                     onClick={() => del.mutate(b.id)}
                     className="text-red-400 hover:underline"

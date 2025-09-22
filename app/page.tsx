@@ -1,443 +1,173 @@
-"use client";
+import Link from "next/link";
 
-import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-
-type Message = {
-  role: "user" | "assistant";
-  content: string;
-};
-
-type Chat = {
-  id: string;
-  title: string;
-  messages: Message[];
-};
-
-export default function Home() {
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [darkMode, setDarkMode] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  // ⏱ Timer states
-  const [timeLeft, setTimeLeft] = useState(3600); // 1 hour = 3600 sec
-  const [isPaused, setIsPaused] = useState(false);
-  const [timerStarted, setTimerStarted] = useState(false);
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const currentChat = chats.find((c) => c.id === currentChatId);
-
-  // Scroll to bottom
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [currentChat?.messages?.length, loading]);
-
-  // Load chats + theme
-  useEffect(() => {
-    const storedChats = localStorage.getItem("aiTutorChats");
-    const lastChatId = localStorage.getItem("lastChatId");
-    const storedDark = localStorage.getItem("darkMode");
-    if (storedChats) {
-      const parsed = JSON.parse(storedChats) as Chat[];
-      setChats(parsed);
-      if (parsed.length > 0) {
-        const chatToOpen = parsed.find((c) => c.id === lastChatId) || parsed[0];
-        setCurrentChatId(chatToOpen.id);
-      }
-    }
-    if (storedDark) setDarkMode(storedDark === "true");
-  }, []);
-
-  // Save chats
-  useEffect(() => {
-    localStorage.setItem("aiTutorChats", JSON.stringify(chats));
-  }, [chats]);
-
-  // Save current chat id
-  useEffect(() => {
-    if (currentChatId) localStorage.setItem("lastChatId", currentChatId);
-  }, [currentChatId]);
-
-  // Save theme
-  useEffect(() => {
-    localStorage.setItem("darkMode", darkMode.toString());
-  }, [darkMode]);
-
-  // Timer countdown ⏳
-  useEffect(() => {
-    if (!timerStarted || isPaused) return;
-    if (timeLeft <= 0) return;
-
-    const interval = setInterval(() => {
-      setTimeLeft((t) => (t > 0 ? t - 1 : 0));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [timeLeft, isPaused, timerStarted]);
-
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  };
-
-  const startNewChat = () => {
-    const newChat: Chat = {
-      id: Date.now().toString(),
-      title: "New Chat",
-      messages: [],
-    };
-    setChats([newChat, ...chats]);
-    setCurrentChatId(newChat.id);
-    if (window.innerWidth < 768) setSidebarOpen(false);
-  };
-
-  const deleteCurrentChat = () => {
-    if (!currentChatId) return;
-    const updated = chats.filter((c) => c.id !== currentChatId);
-    setChats(updated);
-    setCurrentChatId(updated.length > 0 ? updated[0].id : null);
-  };
-
-  const editCurrentChatName = () => {
-    if (!currentChatId) return;
-    const newName = prompt("Enter new chat name:", currentChat?.title || "");
-    if (!newName) return;
-    setChats((prev) =>
-      prev.map((c) =>
-        c.id === currentChatId ? { ...c, title: newName } : c
-      )
-    );
-  };
-
-  const sendMessage = async (mode: "chat" | "explain" | "quiz_start") => {
-    if (!input.trim() && mode === "chat") return;
-
-    // ⏱ Start timer automatically on first message
-    if (!timerStarted) {
-      setTimerStarted(true);
-      setTimeLeft(3600);
-    }
-
-    setLoading(true);
-    try {
-      let body: any = { mode, lang: "en" };
-
-      if (mode === "chat") {
-        const userMessage: Message = { role: "user", content: input };
-        const updatedChats = chats.map((chat) =>
-          chat.id === currentChatId
-            ? { ...chat, messages: [...chat.messages, userMessage] }
-            : chat
-        );
-        if (currentChat && currentChat.messages.length === 0) {
-          const trimmedTitle =
-            input.length > 30 ? input.slice(0, 30).trim() + "..." : input;
-          updatedChats.find((c) => c.id === currentChatId)!.title = trimmedTitle;
-        }
-        setChats(updatedChats);
-        setInput("");
-        body.messages = [...(currentChat?.messages || []), userMessage];
-      }
-
-      if (mode === "explain") {
-        body.idea = input;
-        setInput("");
-      }
-
-      if (mode === "quiz_start") {
-        body.topic = input || "basics";
-        setInput("");
-      }
-
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-
-      const aiMessage: Message =
-        mode === "quiz_start"
-          ? {
-              role: "assistant",
-              content: `**Practice Task:** ${data.question}\n\n**Hints:**\n${(
-                data.hints || []
-              ).join("\n")}`,
-            }
-          : {
-              role: "assistant",
-              content: data.reply || "⚠️ No reply",
-            };
-
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === currentChatId
-            ? { ...chat, messages: [...chat.messages, aiMessage] }
-            : chat
-        )
-      );
-
-      if (window.innerWidth < 768) setSidebarOpen(false);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const renderMessage = (msg: Message, i: number) => {
-    const isUser = msg.role === "user";
-
-    return (
-      <div
-        key={i}
-        className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}
-      >
-        <div
-          className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm shadow-sm ${
-            isUser
-              ? "bg-blue-500 text-white dark:bg-blue-600 rounded-br-none"
-              : "bg-gray-200 text-black dark:bg-gray-700 dark:text-white rounded-bl-none"
-          }`}
-        >
-          {/**
-           * React 19 type compatibility: react-markdown types lag behind,
-           * so cast to any to avoid JSX/ReactNode incompatibilities.
-           */}
-          {(() => {
-            const Markdown: any = ReactMarkdown;
-            const components: any = {
-              code({ inline, className, children }: any) {
-                const language = /language-(\w+)/.exec(className || "");
-                return !inline ? (
-                  <CodeBlock
-                    content={String(children).replace(/\n$/, "")}
-                    language={language ? language[1] : "javascript"}
-                  />
-                ) : (
-                  <code className="bg-black/20 px-1 rounded text-sm">
-                    {children}
-                  </code>
-                );
-              },
-            };
-            return (
-              <Markdown components={components}>{msg.content}</Markdown>
-            );
-          })()}
-        </div>
-      </div>
-    );
-  };
-
+export default function Landing() {
   return (
-    <main
-      className={`flex h-screen relative ${
-        darkMode ? "bg-[#111] text-white" : "bg-gray-50 text-black"
-      }`}
-    >
-      {/* Fullscreen Pause Overlay */}
-      {isPaused && (
-        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
-          <button
-            onClick={() => setIsPaused(false)}
-            className="px-6 py-3 text-2xl bg-red-500 text-white rounded-lg shadow-lg"
-          >
-            ▶ Resume
-          </button>
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
+      {/* Navbar */}
+      <header className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-slate-900/60 border-b border-white/10">
+        <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600/90 shadow-lg shadow-blue-600/30">
+              {/* Chat/AI icon */}
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M7 8h10M7 12h7" strokeLinecap="round"/>
+                <path d="M4 5h16a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3v-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" strokeLinecap="round"/>
+              </svg>
+            </span>
+            <span className="font-semibold tracking-tight">Institute AI Chatbots</span>
+          </div>
+          <nav className="hidden md:flex items-center gap-6 text-sm text-slate-300">
+            <a href="#features" className="hover:text-white">Features</a>
+            <a href="#testimonials" className="hover:text-white">Testimonials</a>
+            <a href="#cta" className="hover:text-white">Get Started</a>
+          </nav>
+          <Link href="/admin/chatbots" className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium shadow-lg shadow-blue-600/30 hover:bg-blue-500">
+            Add & Customize Chatbot
+          </Link>
         </div>
-      )}
+      </header>
 
-      {/* Sidebar */}
-      <div
-        className={`${
-          sidebarOpen ? "w-64 border-r" : "w-0 border-none"
-        } transition-all overflow-hidden flex flex-col ${
-          darkMode ? "border-gray-700" : "border-gray-300"
-        }`}
-      >
-        <div className="p-3 flex justify-between items-center border-b dark:border-gray-700 border-gray-300">
-          <span className="font-bold">Tarik-Teacher</span>
-          <button
-            onClick={startNewChat}
-            className="text-sm px-2 py-1 border rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-          >
-            + New
-          </button>
+      {/* Hero */}
+      <section className="relative overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,white,transparent_75%)]">
+          <div className="absolute -top-40 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-blue-600/20 blur-3xl" />
+          <div className="absolute top-40 right-20 h-64 w-64 rounded-full bg-indigo-500/20 blur-3xl" />
         </div>
-        <div className="flex-1 overflow-y-auto">
-          {chats.map((chat) => (
-            <div
-              key={chat.id}
-              onClick={() => {
-                setCurrentChatId(chat.id);
-                if (window.innerWidth < 768) setSidebarOpen(false);
-              }}
-              className={`p-2 cursor-pointer truncate ${
-                chat.id === currentChatId
-                  ? "bg-blue-500 text-white"
-                  : "hover:bg-gray-200 dark:hover:bg-gray-700"
-              }`}
-            >
-              {chat.title}
+
+        <div className="mx-auto max-w-7xl px-6 py-20 md:py-28">
+          <div className="grid items-center gap-10 md:grid-cols-2">
+            <div>
+              <h1 className="text-4xl md:text-5xl font-semibold leading-tight">
+                Build your institute’s AI Assistant in minutes
+              </h1>
+              <p className="mt-4 text-slate-300 md:text-lg">
+                Create custom AI chatbots for admissions, student helpdesk, course queries, and more — all without code.
+              </p>
+              <ul className="mt-6 space-y-2 text-slate-300">
+                <li className="flex items-center gap-2"><span className="text-blue-400">✓</span> Create Custom AI Chatbots</li>
+                <li className="flex items-center gap-2"><span className="text-blue-400">✓</span> Engage Students 24/7</li>
+                <li className="flex items-center gap-2"><span className="text-blue-400">✓</span> No Coding Required</li>
+                <li className="flex items-center gap-2"><span className="text-blue-400">✓</span> Personalized for Each Institution</li>
+              </ul>
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <Link href="/admin/chatbots" className="inline-flex items-center rounded-md bg-blue-600 px-6 py-3 text-sm font-semibold shadow-lg shadow-blue-600/30 hover:bg-blue-500">
+                  Add & Customize Chatbot
+                </Link>
+                <a href="#features" className="inline-flex items-center rounded-md border border-white/10 px-6 py-3 text-sm font-semibold text-white/80 hover:bg-white/5">
+                  See features
+                </a>
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-6 shadow-2xl">
+                <div className="mb-4 flex items-center gap-3 text-sm text-slate-300">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600/80">
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <circle cx="12" cy="12" r="4"/>
+                      <path d="M2 12h4m12 0h4M12 2v4m0 12v4"/>
+                    </svg>
+                  </span>
+                  <span>Designed for schools, colleges, coaching & tuition centers</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { title: "Admissions", desc: "Answer program, fees & eligibility." },
+                    { title: "Helpdesk", desc: "Resolve common queries 24/7." },
+                    { title: "Courses", desc: "Syllabus, schedules, resources." },
+                    { title: "Placements", desc: "Guidance & FAQs for students." },
+                    { title: "Library", desc: "Rules, catalog, access hours." },
+                    { title: "Payments", desc: "Fees, invoices, receipts." },
+                  ].map((f, i) => (
+                    <div key={i} className="rounded-lg border border-white/10 bg-black/30 p-4">
+                      <div className="text-sm font-medium">{f.title}</div>
+                      <div className="mt-1 text-xs text-slate-400">{f.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section id="features" className="mx-auto max-w-7xl px-6 py-16">
+        <h2 className="text-2xl md:text-3xl font-semibold">Everything you need to launch</h2>
+        <p className="mt-2 text-slate-300">Clean, modern tools built for education teams.</p>
+        <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {[
+            {
+              icon: (
+                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 7h18M3 12h12M3 17h18"/></svg>
+              ),
+              title: "No-code Builder",
+              desc: "Customize tone, rules, style and brand in minutes.",
+            },
+            {
+              icon: (
+                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 20a8 8 0 1 0-8-8"/><path d="M12 4v8l4 2"/></svg>
+              ),
+              title: "24/7 Engagement",
+              desc: "Always-on help for students, parents and prospects.",
+            },
+            {
+              icon: (
+                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2l4 4-4 4-4-4 4-4z"/><path d="M6 18h12"/></svg>
+              ),
+              title: "Education-ready",
+              desc: "Templates for admissions, academics, fees, library & more.",
+            },
+            {
+              icon: (
+                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 8h10M7 12h6"/></svg>
+              ),
+              title: "Website Embed",
+              desc: "Add to your site with a simple copy-paste snippet.",
+            },
+          ].map((f, i) => (
+            <div key={i} className="group rounded-xl border border-white/10 bg-white/[0.03] p-5 hover:bg-white/[0.06]">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600/20 text-blue-300 group-hover:bg-blue-600/30">
+                  {f.icon}
+                </span>
+                <div className="font-medium">{f.title}</div>
+              </div>
+              <div className="mt-2 text-sm text-slate-300">{f.desc}</div>
             </div>
           ))}
         </div>
-        <div className="p-3 border-t dark:border-gray-700 border-gray-300 space-y-2">
-          {/* Timer UI */}
-          {timerStarted && (
-            <div className="text-center text-sm font-mono">
-              ⏱ {formatTime(timeLeft)}
+      </section>
+
+      {/* Testimonials (placeholder) */}
+      <section id="testimonials" className="mx-auto max-w-7xl px-6 py-16">
+        <h2 className="text-2xl md:text-3xl font-semibold">Trusted by forward-thinking institutes</h2>
+        <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[1,2,3].map((i) => (
+            <div key={i} className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
+              <div className="text-sm text-slate-300">“This AI assistant reduced routine queries drastically and improved student satisfaction.”</div>
+              <div className="mt-4 text-xs text-slate-400">— Principal, Premier Institute</div>
             </div>
-          )}
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            className="w-full text-sm px-2 py-1 border rounded"
-          >
-            {darkMode ? "☀️ Light Mode" : "🌙 Dark Mode"}
-          </button>
-          <button
-            onClick={editCurrentChatName}
-            className="w-full text-sm px-2 py-1 border rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-          >
-            ✏️ Edit Chat Name
-          </button>
-          <button
-            onClick={deleteCurrentChat}
-            className="w-full text-sm px-2 py-1 border rounded hover:bg-red-500 hover:text-white"
-          >
-            🗑️ Delete Chat
-          </button>
-          {timerStarted && (
-            <button
-              onClick={() => setIsPaused(true)}
-              className="w-full text-sm px-2 py-1 border rounded hover:bg-yellow-500 hover:text-white"
-            >
-              ⏸ Pause
-            </button>
-          )}
+          ))}
         </div>
-      </div>
+      </section>
 
-      {/* Chat area */}
-      <div className="flex-1 flex flex-col">
-        {/* Top bar */}
-        <div className="p-3 border-b dark:border-gray-700 border-gray-300 flex items-center justify-between">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="md:hidden px-2 py-1 border rounded"
-          >
-            ☰
-          </button>
-          <span className="font-semibold">
-            {currentChat?.title || "Tarik-Teacher"}
-          </span>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {currentChat?.messages.map((msg, i) => renderMessage(msg, i))}
-          {loading && (
-            <div className="flex items-center gap-1 text-gray-400 px-2 py-1">
-              <span className="animate-bounce">•</span>
-              <span className="animate-bounce delay-150">•</span>
-              <span className="animate-bounce delay-300">•</span>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input area */}
-        {currentChat && (
-          <div className="p-3 border-t dark:border-gray-700 border-gray-300 flex space-x-2">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage("chat");
-                }
-              }}
-              placeholder="Ask your AI Teacher..."
-              className={`flex-1 px-3 py-2 rounded border focus:ring ${
-                darkMode
-                  ? "bg-[#222] border-gray-600 focus:ring-blue-600"
-                  : "bg-white border-gray-300 focus:ring-blue-400"
-              }`}
-            />
-            <button
-              onClick={() => sendMessage("chat")}
-              className="px-3 py-2 border rounded hover:bg-blue-500 hover:text-white"
-            >
-              Send
-            </button>
-            <button
-              onClick={() => sendMessage("explain")}
-              className="px-3 py-2 border rounded hover:bg-green-500 hover:text-white"
-            >
-              Explain Idea
-            </button>
-            <button
-              onClick={() => sendMessage("quiz_start")}
-              className="px-3 py-2 border rounded hover:bg-purple-500 hover:text-white"
-            >
-              Practice Task
-            </button>
+      {/* CTA bottom */}
+      <section id="cta" className="mx-auto max-w-7xl px-6 py-16">
+        <div className="rounded-2xl border border-white/10 bg-gradient-to-r from-blue-700/30 to-indigo-700/30 p-8 text-center shadow-xl">
+          <h3 className="text-2xl font-semibold">Ready to build your institute’s chatbot?</h3>
+          <p className="mt-2 text-slate-300">Launch in minutes. No coding required.</p>
+          <div className="mt-6">
+            <Link href="/admin/chatbots" className="inline-flex items-center rounded-md bg-blue-600 px-6 py-3 text-sm font-semibold shadow-lg shadow-blue-600/30 hover:bg-blue-500">
+              Add & Customize Chatbot
+            </Link>
           </div>
-        )}
-      </div>
-    </main>
-  );
-}
+        </div>
+      </section>
 
-// Code block renderer
-function CodeBlock({
-  content,
-  language = "javascript",
-}: {
-  content: string;
-  language?: string;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (err) {
-      console.error("Copy failed", err);
-    }
-  };
-
-  return (
-    <div className="relative">
-      <button
-        onClick={copy}
-        className="absolute top-1 right-1 text-xs px-2 py-0.5 border rounded bg-black/40 text-white"
-      >
-        {copied ? "Copied!" : "Copy"}
-      </button>
-      <SyntaxHighlighter
-        language={language}
-        style={oneDark}
-        wrapLongLines
-        customStyle={{
-          fontSize: "0.8rem",
-          borderRadius: "0.3rem",
-          padding: "0.75rem",
-        }}
-      >
-        {content}
-      </SyntaxHighlighter>
+      <footer className="border-t border-white/10 py-6 text-center text-xs text-slate-400">
+        © {new Date().getFullYear()} Institute AI Chatbots. All rights reserved.
+      </footer>
     </div>
   );
 }

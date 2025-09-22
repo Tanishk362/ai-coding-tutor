@@ -149,11 +149,10 @@ export function BuilderPage({ id }: { id?: string }) {
   const form = useForm<any>({ defaultValues: initial, mode: "onChange" });
   const didHydrate = useRef(false);
   useEffect(() => {
-    if (!didHydrate.current) {
-      form.reset(initial);
-      didHydrate.current = true;
-    }
-  }, [initial]);
+    // Reset form any time the loaded record changes
+    form.reset(initial);
+    didHydrate.current = true;
+  }, [initial, form]);
 
   // Centralized autosave via watch debounce
   // Debounced autosave handled by useAutoSave; remove legacy watcher
@@ -203,6 +202,7 @@ export function BuilderPage({ id }: { id?: string }) {
   // Wire form changes to autosave schedule (single timer)
   useEffect(() => {
     const sub = form.watch(() => {
+      if (!didHydrate.current) return;
       scheduleSave(form.getValues() as any);
     });
     return () => sub.unsubscribe();

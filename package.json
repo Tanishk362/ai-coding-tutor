@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 4010",
+    "dev:3050": "next dev -p 3050 -H 0.0.0.0",
     "build": "next build",
     "start": "next start -p 4010",
     "lint": "eslint",
@@ -28,7 +29,9 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "zod": "^3.25.76",
-    "zustand": "^4.5.7"
+    "zustand": "^4.5.7",
+    "mammoth": "^1.8.0",
+    "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

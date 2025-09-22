@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+const API_KEY = process.env.OPENAI_API_KEY;
+const useMock = !API_KEY;
+const openai = !useMock ? new OpenAI({ apiKey: API_KEY }) : (null as any);
 
 // Helper: AI Teacher personality
 function sys(lang: "en" | "hi") {
@@ -82,6 +82,11 @@ export async function POST(req: Request) {
       const { messages } = body as {
         messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
       };
+      if (useMock) {
+        const last = messages[messages.length - 1]?.content || "";
+        const reply = `🧪 Mock reply (no OPENAI_API_KEY set). You asked: "${last}"\n\nTip: add OPENAI_API_KEY in .env.local for real answers.`;
+        return NextResponse.json({ reply });
+      }
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{ role: "system", content: sys(lang) }, ...messages],
@@ -97,7 +102,10 @@ export async function POST(req: Request) {
         lang === "hi"
           ? `इस आइडिया को आसान Hinglish roadmap में समझाओ:\n${idea}`
           : `Explain this idea as a roadmap in very simple Hinglish:\n${idea}`;
-
+      if (useMock) {
+        const reply = `🧪 Mock roadmap for: "${idea}"\n\n- Step 1: Think of your goal\n- Step 2: Pick a simple tool (e.g., Framer)\n- Step 3: Use a template and replace content\n- Step 4: Publish a first draft`;
+        return NextResponse.json({ reply });
+      }
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
@@ -115,13 +123,18 @@ export async function POST(req: Request) {
         topic?: string;
         level?: string;
       };
+      if (useMock) {
+        const obj = {
+          question: `Practice: ${topic} (${level}) – Explain in 2 lines with an example.`,
+          hints: ["Keep it simple", "Use a real-world example"],
+        };
+        return NextResponse.json({ question: obj.question, hints: obj.hints });
+      }
       const system = `${sys(lang)} Only JSON in your reply.`;
       const user =
         lang === "hi"
-          ? `एक छोटा practice task दो "${topic}" पर (level: ${level}). 
-JSON लौटाओ: { "question": string, "hints": string[] }`
-          : `Give one small practice task on "${topic}" (level: ${level}). 
-Return JSON: { "question": string, "hints": string[] }`;
+          ? `एक छोटा practice task दो "${topic}" पर (level: ${level}). \nJSON लौटाओ: { "question": string, "hints": string[] }`
+          : `Give one small practice task on "${topic}" (level: ${level}). \nReturn JSON: { "question": string, "hints": string[] }`;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -144,6 +157,11 @@ Return JSON: { "question": string, "hints": string[] }`;
     // ---------- Quiz check ----------
     if (mode === "quiz_check") {
       const { question, userAnswer } = body as { question: string; userAnswer: string };
+      if (useMock) {
+        const ok = (userAnswer || "").toLowerCase().includes("example");
+        const obj = { correct: ok, feedback: ok ? "Looks reasonable for a first try!" : "Try adding a small example." };
+        return NextResponse.json({ correct: !!obj.correct, feedback: obj.feedback || "" });
+      }
       const system = `${sys(lang)} Only JSON in your reply.`;
       const user =
         lang === "hi"
@@ -175,7 +193,10 @@ Return JSON: { "question": string, "hints": string[] }`;
         lang === "hi"
           ? `छात्र अभी Day ${progress} पर है। अगला roadmap दो Hinglish में।`
           : `The student is on Day ${progress}. Give the next roadmap in Hinglish.`;
-
+      if (useMock) {
+        const reply = `🧪 Mock Day ${progress} plan:\n- 20 min: watch a beginner video\n- 20 min: try a template\n- 20 min: publish a draft`;
+        return NextResponse.json({ reply });
+      }
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
@@ -194,7 +215,10 @@ Return JSON: { "question": string, "hints": string[] }`;
         lang === "hi"
           ? `छात्र बोलता है: "${project}". अब इस website को banane ka step-by-step roadmap do (Day 1, Day 2 ...). Hinglish language mein, छोटे tasks batao.`
           : `Student says: "${project}". Create a daily roadmap (Day 1, Day 2, ...) to build this website. Use very simple Hinglish and small tasks.`;
-
+      if (useMock) {
+        const reply = `🧪 Mock roadmap for "${project}":\nDay 1: Pick a template\nDay 2: Replace content\nDay 3: Add one feature\nDay 4: Share with a friend`;
+        return NextResponse.json({ reply });
+      }
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
