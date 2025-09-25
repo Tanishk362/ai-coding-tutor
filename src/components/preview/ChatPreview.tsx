@@ -162,11 +162,17 @@ export function ChatPreview({
       <div className="p-3 border-t border-gray-800">
         <div className="flex items-center gap-2">
           <input
-            className="flex-1 border border-gray-700 bg-[#141414] text-white rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30"
+            className="flex-1 border border-gray-700 bg-[#141414] text-white rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50"
             placeholder={tagline || "Ask your AI Teacher…"}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (!loading) send();
+              }
+            }}
+            disabled={loading}
           />
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
             const f = e.target.files?.[0];
@@ -182,11 +188,12 @@ export function ChatPreview({
             📷
           </button>
           <button
-            onClick={send}
-            className="px-3 py-2 border rounded-md"
+            onClick={() => !loading && send()}
+            disabled={loading}
+            className="px-3 py-2 border rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ borderColor: brandColor, color: brandColor }}
           >
-            Send
+            {loading ? 'Waiting…' : 'Send'}
           </button>
         </div>
         {imagePreview && (
