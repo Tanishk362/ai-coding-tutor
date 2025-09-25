@@ -5,13 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { RenderedMessage } from "./RenderedMessage";
 import type { PublicChatProps } from "./PublicChat";
 import { shouldShowActionButtons } from "@/src/components/utils";
-import {
-  getConversationsByBot,
-  getConversationMessages,
-  createConversation,
-  renameConversation,
-  deleteConversation,
-} from "@/src/data/conversations";
+import { renameConversation, deleteConversation } from "@/src/data/conversations";
+import { listPublicConversations, listPublicMessages } from "@/src/data/publicConversations";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -33,11 +28,15 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
   const [convs, setConvs] = useState<Array<{ id: string; title: string; updated_at: string }>>([]);
   const [activeCid, setActiveCid] = useState<string | null>(null);
   const [chatName, setChatName] = useState<string>("New Chat");
+  const storageKey = useMemo(() => `public-chat:${slug}:active`, [slug]);
+  const sessionsKey = useMemo(() => `public-chat:${slug}:sessions:v1`, [slug]);
 
-  // Messages state (in-memory while page is open)
+  // Messages for currently active conversation
   const [messages, setMessages] = useState<Msg[]>(
     greeting ? [{ role: "assistant", content: greeting }] : []
   );
+  // Local cache of conversation -> messages so switching convs is instant
+  const [messageCache, setMessageCache] = useState<Record<string, Msg[]>>({});
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -66,34 +65,65 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
   const mm = Math.floor(seconds / 60).toString().padStart(2, "0");
   const ss = (seconds % 60).toString().padStart(2, "0");
 
-  // Load sidebar conversations
+  // Load from localStorage (cached sessions) then fetch server conversations
   useEffect(() => {
     (async () => {
       try {
-        const rows = await getConversationsByBot(botId, { pageSize: 50 });
+        // Restore cached sessions first for instant UX
+        if (typeof window !== 'undefined') {
+          const raw = localStorage.getItem(sessionsKey);
+            if (raw) {
+              try {
+                const parsed = JSON.parse(raw) as { convs?: Array<{id:string; title:string; updated_at:string}>; messages?: Record<string, Msg[]> };
+                if (parsed?.convs) setConvs(parsed.convs);
+                if (parsed?.messages) setMessageCache(parsed.messages);
+              } catch {}
+          }
+        }
+        const rows = await listPublicConversations(slug, { pageSize: 50 });
         setConvs(rows as any);
-        if (rows?.length) {
+        const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
+        if (saved && rows.find(r => r.id === saved)) {
+          setActiveCid(saved);
+        } else if (rows.length) {
           setActiveCid(rows[0].id);
+        } else {
+          setActiveCid(null);
+          setMessages(greeting ? [{ role: 'assistant', content: greeting }] : []);
         }
       } catch (e) {
-        console.warn("load convs failed", e);
+        console.warn('load convs failed', e);
       }
     })();
-  }, [botId]);
+  }, [slug, storageKey, sessionsKey, greeting]);
+
+  // Persist active conversation id
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (activeCid) localStorage.setItem(storageKey, activeCid); else localStorage.removeItem(storageKey);
+  }, [activeCid, storageKey]);
+
+  // Persist sessions (conversation list + messages cache)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(sessionsKey, JSON.stringify({ convs, messages: messageCache }));
+    } catch {}
+  }, [convs, messageCache, sessionsKey]);
 
   // Load messages when active conversation changes
   useEffect(() => {
     if (!activeCid) return;
     (async () => {
       try {
-        const ms = await getConversationMessages(activeCid);
-        const asMsgs: Msg[] = (ms as any).map((m: any) => ({ role: m.role, content: m.content }));
-        const tail = asMsgs.slice(-12); // Persisted memory: last 12
-        if (tail.length === 0 && greeting) {
-          setMessages([{ role: "assistant", content: greeting }]);
-        } else {
-          setMessages(tail);
+        if (messageCache[activeCid]) {
+          setMessages(messageCache[activeCid]); // optimistic
         }
+        const ms = await listPublicMessages(slug, activeCid);
+  const asMsgs: Msg[] = (ms as any).map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content as string }));
+  const nextMsgs: Msg[] = asMsgs.length === 0 && greeting ? [{ role: "assistant", content: greeting }] : asMsgs;
+  setMessages(nextMsgs as Msg[]);
+  setMessageCache((c) => ({ ...c, [activeCid]: nextMsgs as Msg[] }));
         const active = convs.find((c) => c.id === activeCid);
         if (active?.title) setChatName(active.title);
       } catch (e) {
@@ -103,33 +133,69 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCid]);
 
-  async function ensureConversation(): Promise<string> {
+  async function ensureConversation(): Promise<string | null> {
     if (activeCid) return activeCid;
-    const created = await createConversation(botId, chatName || "New Chat");
-    setConvs((prev) => [{ id: created.id, title: created.title, updated_at: created.updated_at }, ...prev]);
-    setActiveCid(created.id);
-    return created.id;
+    try {
+      const resp = await fetch(`/api/bots/${encodeURIComponent(slug)}/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: chatName || 'New Chat' }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(json?.error || 'Failed to create conversation');
+      const c = json.conversation as { id: string; title: string; updated_at: string };
+      setConvs((prev) => [{ id: c.id, title: c.title || 'New Chat', updated_at: c.updated_at }, ...prev]);
+      setActiveCid(c.id);
+      return c.id;
+    } catch (e) {
+      console.warn('auto create conversation failed', e);
+      return null;
+    }
   }
 
   async function sendText(content: string) {
     const text = content.trim();
     if (!text) return;
-    const cid = await ensureConversation();
-    setMessages((m) => [...m, { role: "user", content: text }]);
+    const cidBefore = await ensureConversation();
+    setMessages((m) => {
+      const updated: Msg[] = [...m, { role: "user", content: text }];
+      const id = activeCid || cidBefore;
+      if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
+      return updated;
+    });
     setLoading(true);
     try {
-      const history: Msg[] = messages.slice(-11); // keep 11 and add current -> 12
+  // Keep last 13 messages (user/assistant) and append the new user message => 14 total context window
+  const history: Msg[] = messages.slice(-13);
       const payload = [...history, { role: "user", content: text }];
       const res = await fetch(`/api/bots/${encodeURIComponent(slug)}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: payload, conversationId: cid }),
+        body: JSON.stringify({ messages: payload, conversationId: cidBefore ?? undefined }),
       });
       const data = await res.json();
       const reply = res.ok ? data.reply || "" : data.error || "Sorry, I couldn’t respond.";
-      setMessages((m) => [...m, { role: "assistant", content: reply }]);
+      setMessages((m) => {
+        const updated: Msg[] = [...m, { role: "assistant", content: reply }];
+        const id = activeCid || cidBefore || data?.conversationId;
+        if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
+        return updated;
+      });
+      // Capture server-created conversation id if we didn't have one
+      if (!cidBefore && data?.conversationId) {
+        const newId: string = data.conversationId;
+        setActiveCid(newId);
+        // Provisional auto title based on first user message (truncate 60 chars)
+        const autoTitle = (text || 'New Chat').slice(0, 60);
+        setChatName(autoTitle);
+        setConvs((prev) => [{ id: newId, title: autoTitle, updated_at: new Date().toISOString() }, ...prev]);
+      }
     } catch (e: any) {
-      setMessages((m) => [...m, { role: "assistant", content: e?.message || "Network error" }]);
+      setMessages((m) => {
+        const updated: Msg[] = [...m, { role: "assistant", content: e?.message || "Network error" }];
+        if (activeCid) setMessageCache((c) => ({ ...c, [activeCid]: updated }));
+        return updated;
+      });
     } finally {
       setLoading(false);
     }
@@ -156,13 +222,32 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
 
   async function onNewChat() {
     try {
-      const created = await createConversation(botId, "New Chat");
-      setConvs((prev) => [{ id: created.id, title: created.title, updated_at: created.updated_at }, ...prev]);
-      setActiveCid(created.id);
-      setChatName(created.title);
-      setMessages(greeting ? [{ role: "assistant", content: greeting }] : []);
+      if (activeCid) setMessageCache((c) => ({ ...c, [activeCid]: messages }));
+      const now = new Date();
+      const titleSuggestion = `Chat on ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      const resp = await fetch(`/api/bots/${encodeURIComponent(slug)}/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: titleSuggestion }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(json?.error || 'Failed to create conversation');
+      const c = json.conversation as { id: string; title: string; updated_at: string };
+      setConvs((prev) => [{ id: c.id, title: c.title || 'New Chat', updated_at: c.updated_at }, ...prev]);
+      setActiveCid(c.id);
+      setChatName(c.title || 'New Chat');
+  const initial: Msg[] = greeting ? [{ role: 'assistant', content: greeting }] : [];
+  setMessages(initial);
+  setMessageCache((cache) => ({ ...cache, [c.id]: initial }));
     } catch (e) {
-      console.warn("new chat failed", e);
+      console.warn('new chat failed', e);
+      const tempId = `local-${crypto?.randomUUID ? crypto.randomUUID() : Date.now()}`;
+      setConvs((prev) => [{ id: tempId, title: 'New Chat', updated_at: new Date().toISOString() }, ...prev]);
+      setActiveCid(tempId);
+      setChatName('New Chat');
+  const initial: Msg[] = greeting ? [{ role: 'assistant', content: greeting }] : [];
+  setMessages(initial);
+  setMessageCache((cache) => ({ ...cache, [tempId]: initial }));
     }
   }
 
@@ -175,6 +260,7 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
         setActiveCid(next?.id || null);
         setMessages(greeting ? [{ role: "assistant", content: greeting }] : []);
       }
+      setMessageCache((cache) => { const { [id]: _removed, ...rest } = cache; return rest; });
     } catch (e) {
       console.warn("delete failed", e);
     }
@@ -215,7 +301,10 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
           {convs.map((c) => (
             <button
               key={c.id}
-              onClick={() => setActiveCid(c.id)}
+              onClick={() => {
+                if (activeCid) setMessageCache((cache) => ({ ...cache, [activeCid]: messages }));
+                setActiveCid(c.id);
+              }}
               className={`w-full text-left px-3 py-2 text-sm ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"} ${activeCid === c.id ? (light ? "bg-gray-100" : "bg-[#141414]") : ""}`}
             >
               {c.title || "Untitled"}
@@ -292,13 +381,7 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
             </div>
           ))}
           {typingIndicator && loading && <div className={`text-xs ${light ? "text-gray-600" : "text-gray-400"}`}>Assistant is typing…</div>}
-          {starterQuestions?.length > 0 && messages.length <= 1 && (
-            <div className="flex flex-wrap gap-2">
-              {starterQuestions.map((q, i) => (
-                <button key={i} onClick={() => { if (inputRef.current) inputRef.current.value = q; }} className={`text-xs px-2 py-1 rounded-full border ${borderInput} ${light ? "bg-gray-100 hover:bg-gray-200 text-gray-800" : "bg-[#141414] hover:bg-[#1a1a1a] text-gray-200"}`}>{q}</button>
-              ))}
-            </div>
-          )}
+          {/* Starter question chips intentionally hidden for a cleaner greeting */}
         </div>
 
         {/* Composer */}

@@ -38,7 +38,24 @@ export async function createConversation(botId: string, title?: string) {
     .insert({ bot_id: botId, title: title ?? "New Chat" })
     .select("id, title, updated_at")
     .single();
-  if (error) throw new Error(error.message);
+  if (error) {
+    // Dev fallback via service role (bypasses RLS). Surface its error clearly.
+    try {
+      const res = await fetch(`/api/dev/ensure-conversation`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ botId, title: title ?? "New Chat" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = json?.error || `Failed to create conversation via server (${res.status})`;
+        throw new Error(msg);
+      }
+      return json.conversation;
+    } catch (e: any) {
+      throw new Error(e?.message || error.message);
+    }
+  }
   return data;
 }
 

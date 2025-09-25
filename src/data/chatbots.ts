@@ -34,31 +34,43 @@ export async function isSlugAvailable(slug: string, excludeId?: string) {
 }
 
 export async function getChatbots(): Promise<ChatbotRecord[]> {
+  const u = await supabase.auth.getUser();
+  const ownerId = u?.data?.user?.id;
+  if (!ownerId) throw new Error("You must be signed in.");
   const { data, error } = await supabase
     .from("chatbots")
     .select("*")
     .eq("is_deleted", false)
+    .eq("owner_id", ownerId)
     .order("updated_at", { ascending: false });
   if (error) throw niceError(error, "Failed to load chatbots");
   return (data || []) as ChatbotRecord[];
 }
 
 export async function getChatbotById(id: string): Promise<ChatbotRecord | null> {
+  const u = await supabase.auth.getUser();
+  const ownerId = u?.data?.user?.id;
+  if (!ownerId) throw new Error("You must be signed in.");
   const { data, error } = await supabase
     .from("chatbots")
     .select("*")
     .eq("id", id)
+    .eq("owner_id", ownerId)
     .maybeSingle();
   if (error) throw niceError(error, "Failed to load chatbot");
   return (data as ChatbotRecord) || null;
 }
 
 export async function getChatbotBySlug(slug: string): Promise<ChatbotRecord | null> {
+  const u = await supabase.auth.getUser();
+  const ownerId = u?.data?.user?.id;
+  if (!ownerId) throw new Error("You must be signed in.");
   const { data, error } = await supabase
     .from("chatbots")
     .select("*")
     .eq("slug", slug)
     .eq("is_deleted", false)
+    .eq("owner_id", ownerId)
     .maybeSingle();
   if (error) throw niceError(error, "Failed to load chatbot by slug");
   return (data as ChatbotRecord) || null;
@@ -73,7 +85,7 @@ function randomSuffix(len = 4) {
 
 export async function createChatbot(payload: Omit<ChatbotDraft, "slug"> & { name: string }): Promise<ChatbotRecord> {
   const userRes = await supabase.auth.getUser();
-  const ownerId = userRes?.data?.user?.id || (devNoAuth ? DUMMY_OWNER_ID : undefined);
+  const ownerId = userRes?.data?.user?.id;
   if (!ownerId) throw new Error("You must be signed in to create a chatbot.");
   const desired = slugify(payload.name);
   let final = desired || `bot-${randomSuffix()}`;
@@ -118,11 +130,31 @@ export async function createChatbot(payload: Omit<ChatbotDraft, "slug"> & { name
     .insert({ ...(insert as any), owner_id: ownerId })
     .select("*")
     .single();
-  if (error) throw niceError(error, "Failed to create chatbot");
+  if (error) {
+    // Fallback to server upsert via service role in dev/no-auth
+    if (devNoAuth) {
+      try {
+        const resp = await fetch(`/api/dev/ensure-chatbot`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...insert, is_public: true, owner_id: ownerId }),
+        });
+        const json = await resp.json();
+        if (!resp.ok) throw new Error(json?.error || "Failed to create chatbot (server)");
+        return json.bot as ChatbotRecord;
+      } catch (e) {
+        throw niceError(error, "Failed to create chatbot");
+      }
+    }
+    throw niceError(error, "Failed to create chatbot");
+  }
   return data as ChatbotRecord;
 }
 
 export async function updateChatbot(id: string, patch: ChatbotPatch): Promise<ChatbotRecord> {
+  const u = await supabase.auth.getUser();
+  const ownerId = u?.data?.user?.id;
+  if (!ownerId) throw new Error("You must be signed in.");
   const normAll = normalizeChatbotPatch(patch);
   // Slug handling: skip redundant slug; pre-check uniqueness
   if (typeof (normAll as any).slug === "string") {
@@ -146,6 +178,7 @@ export async function updateChatbot(id: string, patch: ChatbotPatch): Promise<Ch
     .from("chatbots")
     .update(normAll as any)
     .eq("id", id)
+    .eq("owner_id", ownerId)
     .select("*")
     .single();
   if (error) {
@@ -153,15 +186,34 @@ export async function updateChatbot(id: string, patch: ChatbotPatch): Promise<Ch
     if ((error as any).code === "23505") {
       throw new Error("SLUG_TAKEN");
     }
+    if (devNoAuth) {
+      try {
+        const body: any = { id, ...normAll };
+        const resp = await fetch(`/api/dev/ensure-chatbot`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const json = await resp.json();
+        if (!resp.ok) throw new Error(json?.error || "Failed to update chatbot (server)");
+        return json.bot as ChatbotRecord;
+      } catch (e) {
+        throw niceError(error, "Failed to update chatbot");
+      }
+    }
     throw niceError(error, "Failed to update chatbot");
   }
   return data as ChatbotRecord;
 }
 
 export async function softDeleteChatbot(id: string): Promise<void> {
+  const u = await supabase.auth.getUser();
+  const ownerId = u?.data?.user?.id;
+  if (!ownerId) throw new Error("You must be signed in.");
   const { error } = await supabase
     .from("chatbots")
     .update({ is_deleted: true })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("owner_id", ownerId);
   if (error) throw niceError(error, "Failed to delete chatbot");
 }

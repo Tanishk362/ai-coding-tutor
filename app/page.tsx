@@ -21,9 +21,14 @@ export default function Landing() {
             <a href="#testimonials" className="hover:text-white">Testimonials</a>
             <a href="#cta" className="hover:text-white">Get Started</a>
           </nav>
-          <Link href="/admin/chatbots" className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium shadow-lg shadow-blue-600/30 hover:bg-blue-500">
-            Add & Customize Chatbot
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/login" className="inline-flex items-center rounded-md border border-white/10 px-4 py-2 text-sm font-medium text-white/90 hover:bg-white/5">
+              Sign in
+            </Link>
+            <Link href="/admin/chatbots" className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium shadow-lg shadow-blue-600/30 hover:bg-blue-500">
+              Add & Customize Chatbot
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -56,6 +61,9 @@ export default function Landing() {
                 <a href="#features" className="inline-flex items-center rounded-md border border-white/10 px-6 py-3 text-sm font-semibold text-white/80 hover:bg-white/5">
                   See features
                 </a>
+                <Link href="/login" className="inline-flex items-center rounded-md border border-white/10 px-6 py-3 text-sm font-semibold text-white/80 hover:bg-white/5">
+                  Sign in
+                </Link>
               </div>
             </div>
 

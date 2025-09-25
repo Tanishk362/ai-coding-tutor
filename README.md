@@ -80,3 +80,20 @@ Includes:
 - The “Generate a greeting with AI” button uses a local stub `suggestGreeting()`; replace with your own API call if desired.
 - Public preview available at `/c/:slug` for bots with `is_public=true`.
 
+### Dev: bypass RLS for writes
+
+For local development, you can enable a server-only route that uses the Supabase Service Role to upsert/read chatbots. Add to `.env.local` (never commit this key):
+
+```
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+NEXT_PUBLIC_DEV_NO_AUTH=true
+```
+
+Seed a bot:
+
+```
+curl -X POST -H 'content-type: application/json' \
+  -d '{"slug":"demo","name":"Demo Bot","is_public":true}' \
+  http://localhost:4010/api/dev/ensure-chatbot
+```
+

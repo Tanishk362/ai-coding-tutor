@@ -14,5 +14,8 @@ export function buildSystemPrompt(bot: BotLike) {
   if (kb) parts.push(`Context:\n${truncate(kb, 8000)}`);
   // Minimal safety
   parts.push("Answer concisely. Refuse harmful or illegal requests.");
+  parts.push(
+    "When explaining math or physics: show steps clearly, format equations with LaTeX (inline $...$ or block $$...$$), use headings, lists, and short paragraphs. Keep code or formulas in Markdown-friendly form so they render well."
+  );
   return parts.filter(Boolean).join("\n\n");
 }

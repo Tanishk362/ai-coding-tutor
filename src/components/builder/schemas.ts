@@ -41,7 +41,16 @@ export const integrationsSchema = z
   .default({ google_drive: false, slack: false, notion: false });
 
 export const modelSchema = z.object({
-  model: z.enum(["gpt-4o-mini", "gpt-4o", "gpt-5-thinking"]).default("gpt-4o-mini"),
+  model: z
+    .enum([
+      "gpt-4o-mini",
+      "gpt-4o",
+      "gpt-5",
+      "gpt-5-mini",
+      "gpt-5-nano",
+      "deepseek-reasoner",
+    ])
+    .default("gpt-4o-mini"),
   temperature: z.number().min(0).max(1).default(0.6),
 });
 

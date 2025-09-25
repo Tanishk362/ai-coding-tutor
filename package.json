@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 4010",
+    "dev": "next dev -p 4010 -H 0.0.0.0",
     "dev:3050": "next dev -p 3050 -H 0.0.0.0",
     "build": "next build",
     "start": "next start -p 4010",

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { isDeepSeekModel, normalizeOpenAIModel } from "@/src/lib/modelProvider";
 
 const API_KEY = process.env.OPENAI_API_KEY;
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const useMock = !API_KEY;
 const openai = !useMock ? new OpenAI({ apiKey: API_KEY }) : (null as any);
 
@@ -87,8 +89,24 @@ export async function POST(req: Request) {
         const reply = `🧪 Mock reply (no OPENAI_API_KEY set). You asked: "${last}"\n\nTip: add OPENAI_API_KEY in .env.local for real answers.`;
         return NextResponse.json({ reply });
       }
+      const model = (body as any)?.model as string | undefined;
+      if (isDeepSeekModel(model)) {
+        if (!DEEPSEEK_API_KEY) return NextResponse.json({ reply: "Server missing DEEPSEEK_API_KEY." }, { status: 500 });
+        const res = await fetch("https://api.deepseek.com/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_API_KEY}` },
+          body: JSON.stringify({
+            model: model || "deepseek-reasoner",
+            messages: [{ role: "system", content: sys(lang) }, ...messages],
+          }),
+        });
+        if (!res.ok) return NextResponse.json({ reply: `DeepSeek error ${res.status}` }, { status: 500 });
+        const data = await res.json();
+        const reply = data?.choices?.[0]?.message?.content || "";
+        return NextResponse.json({ reply });
+      }
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: normalizeOpenAIModel(model),
         messages: [{ role: "system", content: sys(lang) }, ...messages],
       });
       const reply = completion.choices[0]?.message?.content || "";

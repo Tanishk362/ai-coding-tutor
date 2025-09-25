@@ -155,19 +155,7 @@ export function ChatPreview({
           <div className="text-xs text-gray-400">Assistant is typing…</div>
         )}
 
-        {starterQuestions?.length > 0 && messages.length <= 1 && (
-          <div className="flex flex-wrap gap-2">
-            {starterQuestions.map((q, i) => (
-              <button
-                key={i}
-                onClick={() => setInput(q)}
-                className="text-xs px-2 py-1 rounded-full border border-gray-700 bg-[#141414] hover:bg-[#1a1a1a] text-gray-200"
-              >
-                {q}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Starter question chips intentionally hidden for a cleaner greeting */}
       </div>
 
       {/* Composer */}

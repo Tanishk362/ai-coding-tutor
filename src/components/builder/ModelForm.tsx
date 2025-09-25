@@ -16,7 +16,11 @@ export function ModelForm() {
         >
           <option className="bg-[#0e0e0e]" value="gpt-4o-mini">gpt-4o-mini</option>
           <option className="bg-[#0e0e0e]" value="gpt-4o">gpt-4o</option>
-          <option className="bg-[#0e0e0e]" value="gpt-5-thinking">gpt-5-thinking</option>
+          <option className="bg-[#0e0e0e]" value="gpt-5">gpt-5</option>
+          <option className="bg-[#0e0e0e]" value="gpt-5-mini">gpt-5-mini</option>
+          <option className="bg-[#0e0e0e]" value="gpt-5-nano">gpt-5-nano</option>
+          <option className="bg-[#0e0e0e]" value="deepseek-chat">deepseek-chat</option>
+          <option className="bg-[#0e0e0e]" value="deepseek-reasoner">deepseek-reasoner</option>
         </select>
       </div>
       <div className="space-y-2">
