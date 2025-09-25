@@ -20,6 +20,7 @@ export type PublicChatProps = {
   knowledgeBase?: string | null;
   model?: string;
   temperature?: number;
+  rules?: { settings?: { wait_for_reply?: boolean } } | null;
 };
 
 export default function PublicChat({
@@ -31,6 +32,7 @@ export default function PublicChat({
   greeting,
   typingIndicator,
   starterQuestions,
+  rules,
 }: PublicChatProps) {
   const [messages, setMessages] = useState<Msg[]>([
     { role: "assistant", content: greeting || "How can I help you today?" },
@@ -44,6 +46,8 @@ export default function PublicChat({
     setInput("");
     setConversationId(null);
   };
+
+  const waitForReply = !!rules?.settings?.wait_for_reply;
 
   const send = async () => {
     if (!input.trim()) return;
@@ -164,14 +168,14 @@ export default function PublicChat({
             placeholder="Ask me anything"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
+            onKeyDown={(e) => e.key === "Enter" && !(waitForReply && loading) && send()}
           />
           <button
-            onClick={send}
+            onClick={() => !(waitForReply && loading) && send()}
             className="px-3 py-2 border rounded-md"
             style={{ borderColor: brandColor, color: brandColor }}
           >
-            Send
+            {waitForReply && loading ? 'Waiting…' : 'Send'}
           </button>
         </div>
       </div>
