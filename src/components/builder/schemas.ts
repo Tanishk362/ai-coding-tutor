@@ -8,7 +8,8 @@ export const instructionsSchema = z.object({
 });
 
 export const knowledgeSchema = z.object({
-  knowledge_base: z.string().max(10000).optional().default(""),
+  // Removed previous 10k character max to allow large knowledge bases (be mindful of token costs)
+  knowledge_base: z.string().optional().default(""),
   starter_questions: z.array(z.string().min(1)).max(6),
 });
 

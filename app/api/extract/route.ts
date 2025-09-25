@@ -30,17 +30,15 @@ export async function POST(req: NextRequest) {
       text = buffer.toString("utf8");
     }
 
-    const MAX = 10000;
-    let truncated = false;
-    if (text.length > MAX) {
-      text = text.slice(0, MAX - 20) + "\n\n… [truncated]";
-      truncated = true;
-    }
+    // Previously truncated to 10k characters. Hard cap removed to allow large
+    // knowledge base ingestion. Extremely large documents will increase
+    // token usage when included in prompts; caller should optionally chunk
+    // or summarize upstream if needed.
     return NextResponse.json({
       name,
       bytes: buffer.byteLength,
       chars: text.length,
-      truncated,
+      truncated: false,
       text,
     });
   } catch (err: any) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 // Unified Markdown + Math rendering component
-import { RenderedMessage } from "./RenderedMessage";
+import { RenderedMessage } from "./RenderedMessage"; // handles markdown + math normalization (converts [ ... ] to LaTeX)
 import type { PublicChatProps } from "./PublicChat";
 import { shouldShowActionButtons } from "@/src/components/utils";
 import { renameConversation, deleteConversation } from "@/src/data/conversations";

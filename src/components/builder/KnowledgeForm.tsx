@@ -69,13 +69,8 @@ export function KnowledgeForm() {
       }
       const existing = form.getValues("knowledge_base") || "";
       const combined = (existing + parts.join("")).trim();
-      const LIMIT = 10000;
-      let finalText = combined;
-      if (combined.length > LIMIT) {
-        finalText = combined.slice(0, LIMIT - 20) + "\n\n… [truncated]";
-        setImportError("Knowledge base exceeded 10k characters. Content was truncated.");
-      }
-      form.setValue("knowledge_base", finalText, { shouldDirty: true });
+      // No hard limit now; simply append all content.
+      form.setValue("knowledge_base", combined, { shouldDirty: true });
     } catch (e: any) {
       setImportError(e?.message || "Failed to import files.");
     } finally {
@@ -92,11 +87,11 @@ export function KnowledgeForm() {
           className="w-full resize-y bg-transparent border border-gray-700 rounded px-3 py-2"
           {...form.register("knowledge_base")}
           aria-label="Knowledge base"
-          placeholder="Paste docs, FAQs, policy snippets here (10k char limit). You can also upload .txt/.md/.csv/.json below."
+          placeholder="Paste docs, FAQs, policy snippets here. You can also upload .txt/.md/.csv/.json below."
         />
         <div className="flex items-center justify-between text-xs text-gray-400 mt-1">
           <span>{form.formState?.errors?.knowledge_base?.message as any}</span>
-          <span>{kbLen}/10000</span>
+          <span>{kbLen} chars</span>
         </div>
       </div>
 
@@ -110,7 +105,7 @@ export function KnowledgeForm() {
           className="text-sm"
         />
         <div className="mt-2 text-xs text-gray-400">
-          {isImporting ? "Importing…" : "Supported: .txt, .md, .csv, .json. Max total 10k chars."}
+          {isImporting ? "Importing…" : "Supported: .txt, .md, .csv, .json. Large inputs increase token usage."}
           {importError && (
             <div className="text-red-400 mt-1">{importError}</div>
           )}

@@ -42,14 +42,34 @@ function hasMath(text: string): boolean {
   return /\$\$|\$(?!\s)|\\\(|\\\)/.test(text);
 }
 
+// Normalize various math notations into standard $inline$ or $$block$$ so remark-math catches them.
+function normalizeMath(raw: string): string {
+  let txt = raw;
+  // Convert standalone \[ ... \] to $$ ... $$
+  // Use [\s\S] instead of dot-all flag for broader TS target compatibility
+  txt = txt.replace(/\\\[([\s\S]+?)\\\]/g, (_, inner) => `$$${inner.trim()}$$`);
+  // Convert bare [ ... ] that appear to contain LaTeX (heuristic: contains \\ or ^ or _ or frac)
+  txt = txt.replace(/\[(?:\s*)([^\n\]]*?\\[a-zA-Z]+[^\]]*?|[^\]]*?\^.+?[^\]]*?|[^\]]*?_.*?[^\]]*?)\]/g, (m, inner) => {
+    const content = inner.trim();
+    if (!content) return m; // leave as-is if empty
+    // Avoid capturing markdown links [text](url)
+    if (/\]\(/.test(m)) return m;
+    // If it already contains inline/block math delimiters, skip
+    if (/\$.*\$/.test(content)) return m;
+    return `$${content}$`;
+  });
+  return txt;
+}
+
 export const RenderedMessage = React.memo(function RenderedMessage({ content, light }: RenderedMessageProps): React.ReactElement {
+  const normalized = useMemo(() => normalizeMath(content), [content]);
   const remarkPlugins = useMemo(() => {
-    return hasMath(content) ? [remarkGfm, remarkMath] : [remarkGfm];
-  }, [content]);
+    return hasMath(normalized) ? [remarkGfm, remarkMath] : [remarkGfm];
+  }, [normalized]);
 
   const rehypePlugins = useMemo(() => {
-    return hasMath(content) ? [rehypeKatex] : [];
-  }, [content]);
+    return hasMath(normalized) ? [rehypeKatex] : [];
+  }, [normalized]);
 
   const components = useMemo(() => ({
     code: CodeBlock,
@@ -77,7 +97,7 @@ export const RenderedMessage = React.memo(function RenderedMessage({ content, li
         rehypePlugins={rehypePlugins as any}
         components={components as any}
       >
-        {content}
+        {normalized}
       </ReactMarkdown>
     </div>
   );
