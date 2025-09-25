@@ -73,6 +73,11 @@ export const RenderedMessage = React.memo(function RenderedMessage({ content, li
 
   const components = useMemo(() => ({
     code: CodeBlock,
+    img: ({node, ...props}: any) => {
+      // Avoid React 19 warning for empty src; skip rendering if empty
+      if (!props.src) return null;
+      return <img {...props} alt={props.alt || 'image'} />;
+    },
     p: ({node, ...props}: any) => <p className="mb-3" {...props} />,
     ul: ({node, ...props}: any) => <ul className="mb-3 list-disc list-inside space-y-1" {...props} />,
     ol: ({node, ...props}: any) => <ol className="mb-3 list-decimal list-inside space-y-1" {...props} />,

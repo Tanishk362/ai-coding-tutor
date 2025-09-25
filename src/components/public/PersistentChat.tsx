@@ -22,7 +22,10 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
     starterQuestions,
     tagline,
     botId,
-  } = props;
+    // New optional rules/settings surface (if provided by parent fetch)
+    rules,
+  } = props as any;
+  const waitForReply: boolean = !!rules?.settings?.wait_for_reply;
 
   // Sidebar state
   const [convs, setConvs] = useState<Array<{ id: string; title: string; updated_at: string }>>([]);
@@ -203,6 +206,8 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // If wait_for_reply is enabled and a reply is pending, prevent sending
+    if (waitForReply && loading) return;
     const v = inputRef.current?.value ?? "";
     if (inputRef.current) inputRef.current.value = "";
     sendText(v);
@@ -390,7 +395,7 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
             <input ref={inputRef} className={`flex-1 border ${borderInput} ${light ? "bg-white text-black" : "bg-[#141414] text-white"} rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30`} placeholder={tagline || "Ask your AI Teacher…"} />
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
             <button type="button" onClick={onPickImage} className={`px-2 py-2 border rounded-md ${borderInput} ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>📷</button>
-            <button type="submit" disabled={loading} className="px-3 py-2 border rounded-md" style={{ borderColor: brandColor, color: brandColor }}>Send</button>
+            <button type="submit" disabled={loading && waitForReply} className="px-3 py-2 border rounded-md" style={{ borderColor: brandColor, color: brandColor }}>{loading && waitForReply ? 'Waiting…' : 'Send'}</button>
           </div>
           {imagePreview && (
             <div className="mt-2 flex items-center gap-3 text-sm">

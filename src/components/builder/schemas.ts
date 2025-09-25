@@ -16,14 +16,17 @@ export const knowledgeSchema = z.object({
 export const logicSchema = z.object({
   rules: z
     .object({
-      settings: z.object({ auto_suggest: z.boolean().default(true) }).partial().default({}),
+      settings: z.object({
+        auto_suggest: z.boolean().default(true),
+        wait_for_reply: z.boolean().default(false),
+      }).partial().default({}),
       kv: z
         .array(
           z.object({ key: z.string().default(""), value: z.string().default("") })
         )
         .default([]),
     })
-    .default({ settings: { auto_suggest: true }, kv: [] }),
+  .default({ settings: { auto_suggest: true, wait_for_reply: false }, kv: [] }),
 });
 
 export const themeSchema = z.object({

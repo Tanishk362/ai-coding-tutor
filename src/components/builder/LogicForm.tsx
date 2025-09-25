@@ -14,6 +14,11 @@ export function LogicForm() {
         <label className="text-sm">Enable auto-suggested replies</label>
       </div>
 
+      <div className="flex items-center gap-3">
+        <input type="checkbox" {...form.register("rules.settings.wait_for_reply")} />
+        <label className="text-sm">Block second user message until assistant replies</label>
+      </div>
+
       <div className="space-y-3">
         <div className="text-sm font-semibold">Rules</div>
         {fields.map((f, i) => (
