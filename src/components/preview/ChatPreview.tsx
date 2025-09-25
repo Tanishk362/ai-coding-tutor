@@ -18,6 +18,7 @@ export type PreviewProps = {
   knowledgeBase?: string | null;
   model?: string;
   temperature?: number;
+  rules?: { settings?: { wait_for_reply?: boolean } } | null;
 };
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -35,6 +36,7 @@ export function ChatPreview({
   knowledgeBase,
   model,
   temperature,
+  rules,
 }: PreviewProps) {
   const [messages, setMessages] = useState<Msg[]>([
     { role: "assistant", content: greeting || "How can I help you today?" },
@@ -49,8 +51,11 @@ export function ChatPreview({
     setInput("");
   };
 
+  const waitForReply = !!rules?.settings?.wait_for_reply;
+
   const send = async () => {
     if (!input.trim() && !imagePreview) return;
+    if (waitForReply && loading) return; // block until reply
     const text = input.trim();
     setInput("");
     // If there's an attached image, embed as markdown inline with the text (preview-only)
@@ -169,10 +174,10 @@ export function ChatPreview({
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                if (!loading) send();
+                if (!(waitForReply && loading)) send();
               }
             }}
-            disabled={loading}
+            disabled={waitForReply ? loading : false}
           />
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
             const f = e.target.files?.[0];
@@ -188,12 +193,12 @@ export function ChatPreview({
             📷
           </button>
           <button
-            onClick={() => !loading && send()}
-            disabled={loading}
+            onClick={() => !(waitForReply && loading) && send()}
+            disabled={waitForReply ? loading : false}
             className="px-3 py-2 border rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ borderColor: brandColor, color: brandColor }}
           >
-            {loading ? 'Waiting…' : 'Send'}
+            {waitForReply && loading ? 'Waiting…' : 'Send'}
           </button>
         </div>
         {imagePreview && (

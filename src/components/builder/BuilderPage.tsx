@@ -184,6 +184,7 @@ export function BuilderPage({ id }: { id?: string }) {
     knowledgeBase: form.getValues("knowledge_base"),
     model: form.getValues("model"),
     temperature: Number(form.getValues("temperature")),
+    rules: form.getValues("rules"),
   };
 
   // Hook up debounced autosave with flush()
