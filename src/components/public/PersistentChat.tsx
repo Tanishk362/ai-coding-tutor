@@ -159,6 +159,8 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
   async function sendText(content: string) {
     const text = content.trim();
     if (!text) return;
+    // Basic image detection (markdown image). Future: integrate vision API.
+    const containsImage = /!\[[^\]]*\]\([^\)]+\)/.test(text);
     const cidBefore = await ensureConversation();
     setMessages((m) => {
       const updated: Msg[] = [...m, { role: "user", content: text }];
@@ -177,7 +179,11 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
         body: JSON.stringify({ messages: payload, conversationId: cidBefore ?? undefined }),
       });
       const data = await res.json();
-      const reply = res.ok ? data.reply || "" : data.error || "Sorry, I couldn’t respond.";
+      let reply = res.ok ? data.reply || "" : data.error || "Sorry, I couldn’t respond.";
+      if (containsImage && !/\bvision\b/i.test((props as any)?.model || '')) {
+        // Append helper guidance if model likely not multimodal
+        reply = reply || "I see you've uploaded an image, but I'm unable to analyze images directly. Please describe it in text.";
+      }
       setMessages((m) => {
         const updated: Msg[] = [...m, { role: "assistant", content: reply }];
         const id = activeCid || cidBefore || data?.conversationId;

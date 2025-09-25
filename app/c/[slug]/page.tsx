@@ -36,6 +36,7 @@ export default async function PublicBotPage({ params }: { params: Promise<{ slug
             bubble_style: bot.bubble_style ?? "rounded",
             starter_questions: bot.starter_questions ?? [],
             tagline: (bot as any).tagline ?? "Ask your AI Teacher…",
+            rules: (bot as any).rules ?? null,
           }}
         />
       </ErrorBoundary>

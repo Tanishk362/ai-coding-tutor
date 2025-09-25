@@ -11,7 +11,7 @@ export async function getBotForPublic(slug: string) {
   let builder: any = supabaseServer
     .from("chatbots")
     .select(
-      "id,name,slug,greeting,directive,knowledge_base,starter_questions,tagline,brand_color,avatar_url,bubble_style,typing_indicator,model,temperature,is_public,is_deleted"
+      "id,name,slug,greeting,directive,knowledge_base,starter_questions,tagline,brand_color,avatar_url,bubble_style,typing_indicator,model,temperature,is_public,is_deleted,rules"
     )
     .eq("slug", slug);
 

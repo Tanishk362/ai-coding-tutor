@@ -32,6 +32,7 @@ export default function PublicChat({
   greeting,
   typingIndicator,
   starterQuestions,
+  model,
   rules,
 }: PublicChatProps) {
   const [messages, setMessages] = useState<Msg[]>([
@@ -52,6 +53,7 @@ export default function PublicChat({
   const send = async () => {
     if (!input.trim()) return;
     const text = input.trim();
+    const containsImage = /!\[[^\]]*\]\([^\)]+\)/.test(text);
     setInput("");
     // Optimistically add the user's message
     setMessages((m) => [...m, { role: "user", content: text }]);
@@ -65,7 +67,10 @@ export default function PublicChat({
         body: JSON.stringify({ messages: pending, conversationId }),
       });
       const data = await res.json();
-      const reply = res.ok ? (data.reply || "") : (data.error || "Sorry, I couldn’t respond.");
+      let reply = res.ok ? (data.reply || "") : (data.error || "Sorry, I couldn’t respond.");
+      if (containsImage && !/\bvision\b/i.test(model || '')) {
+        reply = reply || "I see you've uploaded an image, but I'm unable to analyze images directly. Could you describe it?";
+      }
       if (data?.conversationId && !conversationId) setConversationId(data.conversationId);
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
     } catch (e: any) {
