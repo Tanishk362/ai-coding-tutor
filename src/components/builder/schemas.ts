@@ -2,7 +2,9 @@ import { z } from "zod";
 
 export const instructionsSchema = z.object({
   greeting: z.string().min(1).max(160),
-  directive: z.string().max(8000).optional().default(""),
+  // Removed previous 8000 char limit to allow very large directives.
+  // NOTE: Extremely large directives will increase token usage & latency.
+  directive: z.string().optional().default(""),
 });
 
 export const knowledgeSchema = z.object({

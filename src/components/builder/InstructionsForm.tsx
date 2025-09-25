@@ -48,7 +48,7 @@ export function InstructionsForm() {
         />
         <div className="flex items-center justify-between text-xs text-gray-400 mt-1">
           <span>{form.formState?.errors?.directive?.message as any}</span>
-          <span>{dLen}/8000</span>
+          <span>{dLen} chars</span>
         </div>
       </div>
     </div>
