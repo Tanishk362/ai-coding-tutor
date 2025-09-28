@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getBotForPublic } from "@/src/data/runtime";
-import { supabaseService } from "@/src/lib/supabaseServer";
+import { supabaseServer, supabaseService } from "@/src/lib/supabaseServer";
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ slug: string }> }) {
   try {
@@ -15,10 +15,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ slug: strin
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    const svc = supabaseService();
-    if (!svc) return NextResponse.json({ error: "Server not configured" }, { status: 500 });
+    const db = supabaseService() ?? supabaseServer;
 
-    let query: any = svc
+    let query: any = db
       .from("conversations")
       .select("id, title, updated_at")
       .eq("bot_id", bot.id)
@@ -27,7 +26,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ slug: strin
 
     if (q) query = query.ilike("title", `%${q}%`);
 
-    const { data, error } = await query;
+  const { data, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ conversations: data || [] });
   } catch (err: any) {

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getBotForPublic } from "@/src/data/runtime";
-import { supabaseService } from "@/src/lib/supabaseServer";
+import { supabaseService, supabaseServer } from "@/src/lib/supabaseServer";
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ slug: string; cid: string }> }) {
   try {
@@ -8,10 +8,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ slug: strin
     const bot = await getBotForPublic(slug);
     if (!bot) return NextResponse.json({ error: "Bot not found or not public" }, { status: 404 });
 
-    const svc = supabaseService();
-    if (!svc) return NextResponse.json({ error: "Server not configured" }, { status: 500 });
+  // Prefer service role; fall back to anon server client in dev
+  const db = supabaseService() ?? supabaseServer;
 
-    const { data: conv, error: convErr } = await svc
+    const { data: conv, error: convErr } = await db
       .from("conversations")
       .select("id, bot_id")
       .eq("id", cid)
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ slug: strin
     if (convErr) return NextResponse.json({ error: convErr.message }, { status: 500 });
     if (!conv || conv.bot_id !== bot.id) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
 
-    const { data, error } = await svc
+    const { data, error } = await db
       .from("messages")
       .select("id, role, content, created_at")
       .eq("conversation_id", cid)

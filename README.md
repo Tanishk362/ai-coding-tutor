@@ -95,5 +95,33 @@ Seed a bot:
 curl -X POST -H 'content-type: application/json' \
   -d '{"slug":"demo","name":"Demo Bot","is_public":true}' \
   http://localhost:4010/api/dev/ensure-chatbot
+
+## Deploy (Vercel via GitHub Actions)
+
+This repo includes a GitHub Actions workflow at `.github/workflows/vercel-deploy.yml` that deploys to Vercel on pushes to `main` (and can be triggered manually).
+
+1) Create a Vercel project and link it to your GitHub repo (or use the CLI `vercel link`).
+
+2) In your GitHub repository Settings → Secrets and variables → Actions → New repository secret, add:
+
+- `VERCEL_TOKEN` – A Vercel personal access token
+- `VERCEL_ORG_ID` – Your Vercel org ID (from `vercel project` or dashboard)
+- `VERCEL_PROJECT_ID` – Your Vercel project ID
+
+3) Configure environment variables in Vercel (Production env):
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- Any other runtime variables you require
+
+4) Push to `main` or run the workflow manually under the Actions tab ("Run workflow").
+
+The workflow runs:
+- `vercel pull` to retrieve envs
+- `vercel build --prod` to create a production build
+- `vercel deploy --prebuilt --prod` to deploy
+
+If you're not using Vercel, you can build with `npm run build` and host `.next` via a Node server using `npm start` or a platform that supports Next.js.
+
 ```
 

@@ -14,10 +14,21 @@ function slugify(input: string): string {
 function serviceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) return null;
-  return createClient(url, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url) return null;
+  // Prefer service role when available
+  if (serviceKey) {
+    return createClient(url, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+  }
+  // Dev-only fallback: use anon in local with relaxed RLS
+  if (process.env.NODE_ENV === "development" && anonKey) {
+    return createClient(url, anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+  }
+  return null;
 }
 
 export async function GET(req: Request) {

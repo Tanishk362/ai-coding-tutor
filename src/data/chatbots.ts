@@ -34,44 +34,55 @@ export async function isSlugAvailable(slug: string, excludeId?: string) {
 }
 
 export async function getChatbots(): Promise<ChatbotRecord[]> {
+  const devNoAuth =
+    typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEV_NO_AUTH === "true";
   const u = await supabase.auth.getUser();
   const ownerId = u?.data?.user?.id;
-  if (!ownerId) throw new Error("You must be signed in.");
-  const { data, error } = await supabase
+  // In dev/no-auth, list all non-deleted chatbots (RLS in supabase.sql permits anon)
+  let query = supabase
     .from("chatbots")
     .select("*")
     .eq("is_deleted", false)
-    .eq("owner_id", ownerId)
-    .order("updated_at", { ascending: false });
+    .order("updated_at", { ascending: false }) as any;
+  if (!devNoAuth) {
+    if (!ownerId) throw new Error("You must be signed in.");
+    query = query.eq("owner_id", ownerId);
+  }
+  const { data, error } = await query;
   if (error) throw niceError(error, "Failed to load chatbots");
   return (data || []) as ChatbotRecord[];
 }
 
 export async function getChatbotById(id: string): Promise<ChatbotRecord | null> {
+  const devNoAuth =
+    typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEV_NO_AUTH === "true";
   const u = await supabase.auth.getUser();
   const ownerId = u?.data?.user?.id;
-  if (!ownerId) throw new Error("You must be signed in.");
-  const { data, error } = await supabase
-    .from("chatbots")
-    .select("*")
-    .eq("id", id)
-    .eq("owner_id", ownerId)
-    .maybeSingle();
+  let query = supabase.from("chatbots").select("*").eq("id", id) as any;
+  if (!devNoAuth) {
+    if (!ownerId) throw new Error("You must be signed in.");
+    query = query.eq("owner_id", ownerId);
+  }
+  const { data, error } = await query.maybeSingle();
   if (error) throw niceError(error, "Failed to load chatbot");
   return (data as ChatbotRecord) || null;
 }
 
 export async function getChatbotBySlug(slug: string): Promise<ChatbotRecord | null> {
+  const devNoAuth =
+    typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEV_NO_AUTH === "true";
   const u = await supabase.auth.getUser();
   const ownerId = u?.data?.user?.id;
-  if (!ownerId) throw new Error("You must be signed in.");
-  const { data, error } = await supabase
+  let query = supabase
     .from("chatbots")
     .select("*")
     .eq("slug", slug)
-    .eq("is_deleted", false)
-    .eq("owner_id", ownerId)
-    .maybeSingle();
+    .eq("is_deleted", false) as any;
+  if (!devNoAuth) {
+    if (!ownerId) throw new Error("You must be signed in.");
+    query = query.eq("owner_id", ownerId);
+  }
+  const { data, error } = await query.maybeSingle();
   if (error) throw niceError(error, "Failed to load chatbot by slug");
   return (data as ChatbotRecord) || null;
 }

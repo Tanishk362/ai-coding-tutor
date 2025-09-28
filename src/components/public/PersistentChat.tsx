@@ -59,6 +59,8 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
   // Simple timer (UI only) with pause
   const [seconds, setSeconds] = useState(0);
   const [paused, setPaused] = useState(false);
+  // Sidebar open on mobile
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   useEffect(() => {
     const id = setInterval(() => {
       if (!paused) setSeconds((s) => s + 1);
@@ -301,9 +303,27 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
   const headerTitle = useMemo(() => name || "Chatbot", [name]);
 
   return (
-    <div className={`flex h-[100dvh] ${bgMain}`}>
+    <div className={`relative flex h-[100dvh] ${bgMain}`}>
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <button
+          aria-label="Close sidebar"
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className={`w-72 border-r ${borderClr} flex flex-col`}>
+      <div
+        className={
+          `fixed inset-y-0 left-0 z-40 w-64 sm:w-72 border-r ${borderClr} ${bgPanel} ` +
+          `flex flex-col transform transition-transform duration-300 ease-in-out ` +
+          `${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ` +
+          `md:static md:translate-x-0`
+        }
+        role="complementary"
+        aria-label="Conversations sidebar"
+      >
         <div className="p-3 flex items-center justify-between">
           <div className="font-semibold truncate">{headerTitle}</div>
           <button onClick={onNewChat} className={`text-xs px-2 py-1 border ${borderInput} rounded-md hover:bg-[#f5f5f5] ${light ? "" : "hover:bg-[#141414]"}`}>+ New</button>
@@ -315,6 +335,7 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
               onClick={() => {
                 if (activeCid) setMessageCache((cache) => ({ ...cache, [activeCid]: messages }));
                 setActiveCid(c.id);
+                setSidebarOpen(false);
               }}
               className={`w-full text-left px-3 py-2 text-sm ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"} ${activeCid === c.id ? (light ? "bg-gray-100" : "bg-[#141414]") : ""}`}
             >
@@ -345,26 +366,40 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
         {/* Top bar with bot avatar and chat name */}
         <div className={`p-3 border-b ${borderClr} ${bgPanel} flex items-center justify-between`}>
           <div className="flex items-center gap-2">
+            {/* Hamburger for mobile */}
+            <button
+              type="button"
+              aria-label="Open sidebar"
+              aria-expanded={sidebarOpen}
+              onClick={() => setSidebarOpen(true)}
+              className={`md:hidden mr-1 inline-flex h-8 w-8 items-center justify-center rounded border ${borderInput} ${light ? 'hover:bg-gray-100' : 'hover:bg-[#141414]'}`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
             <img src={avatarUrl || "/favicon.ico"} onError={(e) => ((e.currentTarget.src = "/favicon.ico"))} className={`w-7 h-7 rounded-full border ${light ? "border-gray-300" : "border-gray-700"}`} alt="avatar" />
-            <div className="font-semibold">{chatName}</div>
+            <div className="font-semibold text-sm md:text-base">{chatName}</div>
           </div>
           <div className="flex gap-2">
-            <button onClick={onRename} className={`text-xs px-2 py-1 border ${borderInput} rounded-md ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>Edit Chat Name</button>
-            <button onClick={() => activeCid && onDeleteChat(activeCid)} className={`text-xs px-2 py-1 border ${borderInput} rounded-md ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>Delete Chat</button>
+            <button onClick={onRename} className={`text-xs md:text-sm px-2 py-1 border ${borderInput} rounded-md ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>Edit Chat Name</button>
+            <button onClick={() => activeCid && onDeleteChat(activeCid)} className={`text-xs md:text-sm px-2 py-1 border ${borderInput} rounded-md ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>Delete Chat</button>
           </div>
         </div>
 
         {/* Messages */}
-        <div className={`flex-1 overflow-y-auto p-4 space-y-3 ${bgPanel}`}>
+        <div className={`flex-1 overflow-y-auto p-3 md:p-4 space-y-3 ${bgPanel}`}>
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[80%] px-3 py-2 ${radius}`}
+                className={`max-w-[90%] sm:max-w-[85%] md:max-w-[80%] px-3 py-2 text-sm md:text-base ${radius}`}
                 style={{ background: m.role === "user" ? brandColor : bubbleBotBg, color: m.role === "user" ? bubbleUserText : bubbleBotText }}
               >
                 <RenderedMessage content={m.content} light={light} />
                 {m.role === "assistant" && shouldShowActionButtons(m.content) && (
-                  <div className="mt-2 flex gap-2 text-xs">
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] md:text-xs">
                     <button
                       type="button"
                       className={`px-2 py-1 rounded border ${borderInput} ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
@@ -396,12 +431,12 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
         </div>
 
         {/* Composer */}
-        <form onSubmit={onSubmit} className={`p-3 ${bgPanel} border-t ${borderClr}`}>
+        <form onSubmit={onSubmit} className={`p-2 md:p-3 ${bgPanel} border-t ${borderClr}`}>
           <div className="flex items-center gap-2">
-            <input ref={inputRef} className={`flex-1 border ${borderInput} ${light ? "bg-white text-black" : "bg-[#141414] text-white"} rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30`} placeholder={tagline || "Ask your AI Teacher…"} />
+            <input ref={inputRef} className={`flex-1 border ${borderInput} ${light ? "bg-white text-black" : "bg-[#141414] text-white"} rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 text-sm md:text-base`} placeholder={tagline || "Ask your AI Teacher…"} />
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
             <button type="button" onClick={onPickImage} className={`px-2 py-2 border rounded-md ${borderInput} ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>📷</button>
-            <button type="submit" disabled={loading && waitForReply} className="px-3 py-2 border rounded-md" style={{ borderColor: brandColor, color: brandColor }}>{loading && waitForReply ? 'Waiting…' : 'Send'}</button>
+            <button type="submit" disabled={loading && waitForReply} className="px-3 py-2 border rounded-md text-sm md:text-base" style={{ borderColor: brandColor, color: brandColor }}>{loading && waitForReply ? 'Waiting…' : 'Send'}</button>
           </div>
           {imagePreview && (
             <div className="mt-2 flex items-center gap-3 text-sm">
