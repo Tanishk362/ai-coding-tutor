@@ -18,9 +18,27 @@ export async function getConversationsByBot(
     .range(from, to) as any;
   if (opts?.q) query = query.ilike("title", `%${opts.q}%`);
   const { data, error } = await query;
-  // If query errors due to RLS or returns empty while in dev, try server fallback
+  // If query errors due to RLS or returns empty, try server fallback
   const devNoAuth = typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEV_NO_AUTH === "true";
-  if (error) {
+  if (error || (data?.length ?? 0) === 0) {
+    // Admin fallback using service role API when authenticated
+    try {
+      const params = new URLSearchParams();
+      params.set("botId", botId);
+      params.set("page", String(page));
+      params.set("pageSize", String(pageSize));
+      if (opts?.q) params.set("q", opts.q);
+      // Try with Supabase access token if available
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data.session?.access_token;
+      const res = await fetch(`/api/admin/conversations?${params.toString()}`, {
+        cache: "no-store",
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) return json.conversations || [];
+    } catch {}
+
     if (devNoAuth) {
       try {
         const params = new URLSearchParams();
@@ -33,19 +51,7 @@ export async function getConversationsByBot(
         if (res.ok) return json.conversations || [];
       } catch {}
     }
-    throw new Error(error.message);
-  }
-  if ((data?.length ?? 0) === 0 && devNoAuth) {
-    try {
-      const params = new URLSearchParams();
-      params.set("botId", botId);
-      params.set("page", String(page));
-      params.set("pageSize", String(pageSize));
-      if (opts?.q) params.set("q", opts.q);
-      const res = await fetch(`/api/dev/conversations?${params.toString()}`, { cache: "no-store" });
-      const json = await res.json().catch(() => ({}));
-      if (res.ok) return json.conversations || [];
-    } catch {}
+    if (error) throw new Error(error.message);
   }
   return data || [];
 }
@@ -57,7 +63,19 @@ export async function getConversationMessages(cid: string) {
     .eq("conversation_id", cid)
     .order("created_at", { ascending: true });
   const devNoAuth = typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEV_NO_AUTH === "true";
-  if (error) {
+  if (error || (data?.length ?? 0) === 0) {
+    // Admin fallback using service role API when authenticated
+    try {
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data.session?.access_token;
+      const res = await fetch(`/api/admin/messages?cid=${encodeURIComponent(cid)}`, {
+        cache: "no-store",
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) return json.messages || [];
+    } catch {}
+
     if (devNoAuth) {
       try {
         const res = await fetch(`/api/dev/messages?cid=${encodeURIComponent(cid)}`, { cache: "no-store" });
@@ -65,14 +83,7 @@ export async function getConversationMessages(cid: string) {
         if (res.ok) return json.messages || [];
       } catch {}
     }
-    throw new Error(error.message);
-  }
-  if ((data?.length ?? 0) === 0 && devNoAuth) {
-    try {
-      const res = await fetch(`/api/dev/messages?cid=${encodeURIComponent(cid)}`, { cache: "no-store" });
-      const json = await res.json().catch(() => ({}));
-      if (res.ok) return json.messages || [];
-    } catch {}
+    if (error) throw new Error(error.message);
   }
   return data || [];
 }
