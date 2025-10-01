@@ -44,28 +44,8 @@ export function containsMathOrQuestion(raw?: string): boolean {
 // New, stricter detector per requirements: return true ONLY when
 // 1) message contains math OR science keywords, AND
 // 2) it also includes numbers or one of the symbols: = + - / ^ [ ]
-export function shouldShowActionButtons(message?: string): boolean {
-  if (!message) return false;
-  const t = message.toLowerCase();
-
-  // math keywords
-  const mathKeywords = [
-    'solve','find','calculate','compute','evaluate','equation','inequality','integral','derivative','differentiate','integrate',
-    'limit','matrix','vector','determinant','eigen','polynomial','algebra','calculus','trigonometry','logarithm','exponential',
-    'probability','statistics','mean','median','variance','standard deviation','factor','expand','simplify','root','gcd','lcm'
-  ];
-  // science/physics keywords
-  const scienceKeywords = [
-    'physics','force','velocity','speed','acceleration','mass','weight','momentum','impulse','torque','energy','work','power',
-    'electric','voltage','current','resistance','ohm','magnetic','magnetism','field','frequency','wavelength','period',
-    'pressure','density','kinematics','dynamics','projectile','circuit'
-  ];
-
-  const hasKeyword = [...mathKeywords, ...scienceKeywords].some(k => t.includes(k));
-  if (!hasKeyword) return false;
-
-  // digits or any of the specified symbols
-  const hasNumbersOrSymbols = /[0-9]|[=+\-\/^\[\]]/.test(t);
-  return hasNumbersOrSymbols;
+export function shouldShowActionButtons(_message?: string): boolean {
+  // Disabled per requirement: do not show suggestion/action buttons in chat
+  return false;
 }
 
