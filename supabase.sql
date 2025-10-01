@@ -173,3 +173,71 @@ do $$ begin
     execute function public.set_updated_at();
   end if;
 end $$;
+
+
+-- =========================
+-- Chat Memory (Vector)
+-- =========================
+-- Requires pgvector for embedding storage and similarity search
+create extension if not exists vector;
+
+create table if not exists public.chat_memory (
+  id uuid primary key default gen_random_uuid(),
+  role text not null check (role in ('user','assistant','system')),
+  message text not null,
+  embedding vector(1536) not null,
+  user_id uuid not null,
+  chatbot_id uuid not null references public.chatbots(id) on delete cascade,
+  conversation_id uuid null references public.conversations(id) on delete cascade,
+  created_at timestamptz default now()
+);
+
+-- Helpful indexes
+create index if not exists chat_memory_chatbot_idx on public.chat_memory (chatbot_id, created_at desc);
+create index if not exists chat_memory_user_idx on public.chat_memory (user_id, created_at desc);
+-- Vector index (adjust lists per data size)
+do $$ begin
+  if not exists (
+    select 1 from pg_indexes where schemaname='public' and indexname='chat_memory_embedding_idx'
+  ) then
+    execute 'create index chat_memory_embedding_idx on public.chat_memory using ivfflat (embedding vector_cosine_ops) with (lists = 100)';
+  end if;
+end $$;
+
+alter table public.chat_memory enable row level security;
+
+-- DEV policies: allow anon in local dev
+drop policy if exists "dev anon chat_memory select" on public.chat_memory;
+drop policy if exists "dev anon chat_memory insert" on public.chat_memory;
+drop policy if exists "dev anon chat_memory update" on public.chat_memory;
+drop policy if exists "dev anon chat_memory delete" on public.chat_memory;
+
+create policy "dev anon chat_memory select" on public.chat_memory for select to anon using (true);
+create policy "dev anon chat_memory insert" on public.chat_memory for insert to anon with check (true);
+create policy "dev anon chat_memory update" on public.chat_memory for update to anon using (true) with check (true);
+create policy "dev anon chat_memory delete" on public.chat_memory for delete to anon using (true);
+
+-- RPC: similarity search over chat memory
+create or replace function public.match_chat_memory(
+  query_embedding vector(1536),
+  uid uuid,
+  bid uuid,
+  cid uuid,
+  match_count int
+) returns table (
+  id uuid,
+  role text,
+  message text,
+  similarity float,
+  created_at timestamptz
+) language sql stable as $$
+  select m.id, m.role, m.message,
+         1 - (m.embedding <=> query_embedding) as similarity,
+         m.created_at
+  from public.chat_memory m
+  where m.user_id = uid
+    and m.chatbot_id = bid
+    and (cid is null or m.conversation_id = cid)
+  order by m.embedding <=> query_embedding asc, m.created_at desc
+  limit match_count
+$$;

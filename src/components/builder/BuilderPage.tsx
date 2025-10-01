@@ -60,6 +60,7 @@ export function BuilderPage({ id }: { id?: string }) {
           starter_questions: payload.starter_questions,
           rules: (payload as any).rules,
           integrations: (payload as any).integrations,
+          theme_template: (payload as any).theme_template,
           brand_color: payload.brand_color,
           avatar_url: payload.avatar_url,
           bubble_style: (payload as any).bubble_style || "rounded",
@@ -135,6 +136,7 @@ export function BuilderPage({ id }: { id?: string }) {
         slack: false,
         notion: false,
       },
+      theme_template: (record as any)?.theme_template || "default",
       brand_color: record?.brand_color || "#3B82F6",
       avatar_url: record?.avatar_url || "",
       bubble_style: record?.bubble_style || "rounded",
@@ -161,6 +163,7 @@ export function BuilderPage({ id }: { id?: string }) {
   const pv = form.watch([
     "name",
     "avatar_url",
+    "theme_template",
     "brand_color",
     "bubble_style",
     "greeting",
@@ -174,6 +177,7 @@ export function BuilderPage({ id }: { id?: string }) {
   const preview = {
     name: form.getValues("name"),
     avatarUrl: form.getValues("avatar_url"),
+    themeTemplate: form.getValues("theme_template"),
     brandColor: form.getValues("brand_color"),
     bubbleStyle: form.getValues("bubble_style"),
     greeting: form.getValues("greeting"),
@@ -232,6 +236,7 @@ export function BuilderPage({ id }: { id?: string }) {
           starter_questions: snapshot.starter_questions,
           rules: (snapshot as any).rules,
           integrations: (snapshot as any).integrations,
+          theme_template: (snapshot as any).theme_template,
           brand_color: snapshot.brand_color,
           avatar_url: snapshot.avatar_url,
           bubble_style: (snapshot as any).bubble_style || "rounded",
@@ -276,67 +281,71 @@ export function BuilderPage({ id }: { id?: string }) {
   }, [draftId, form, flush, router]);
 
   return (
-    <div className="flex h-[100dvh]">
+    <div className="flex h-[100dvh] bg-gray-50">
       <SectionNav items={nav as any} active={active} onChange={(k) => { if (k === "history") { router.push("/admin/conversations"); return; } setActive(k as any); }} />
 
       {/* Builder + Preview split */}
-      <div className="flex-1 grid grid-cols-2">
-        <div className="h-full overflow-y-auto p-6 space-y-6">
-          {/* Header bar */}
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-lg font-semibold">{form.getValues("name")}</div>
-            <div className="flex items-center gap-3">
-              {process.env.NEXT_PUBLIC_DEV_NO_AUTH === "true" && (
-                <span className="text-xs rounded bg-amber-100 text-amber-800 px-2 py-1">Dev mode: no auth</span>
-              )}
-              {saveMutation.isPending && (
-                <span className="text-xs px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-700/40">Saving…</span>
-              )}
-              {!saveMutation.isPending && savedAt && (
-                <span className="text-xs px-2 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-700/40">All changes saved</span>
-              )}
-              <button
-                onClick={async () => {
-                  try { await (async () => { /* flush autosave */ })(); } catch {}
-                  try { await saveMutation.mutateAsync(form.getValues()); setSavedAt(Date.now()); } catch(e){ console.error('Save failed', e); }
-                }}
-                className="px-3 py-1 text-sm rounded border border-blue-500 hover:bg-blue-600/20"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => {
-                  const currentId = draftId || record?.id;
-                  if (currentId) router.push(`/admin/chatbots/${currentId}/conversations`);
-                }}
-                className="px-3 py-1 text-sm rounded border border-gray-600 hover:bg-gray-700/40 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!(draftId || record?.id)}
-                title={!(draftId || record?.id) ? 'Save once to view history' : undefined}
-              >
-                Conversation history
-              </button>
-              <button
-                onClick={onViewLive}
-                className="px-3 py-1 text-sm rounded border border-gray-600 hover:bg-gray-700/40 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={autoStatus === 'saving' || !!form.formState.errors.slug || saveMutation.isPending}
-                title={!!form.formState.errors.slug ? 'Fix slug to save' : undefined}
-              >
-                View live chatbot
-              </button>
+      <div className="flex-1 grid grid-cols-2 gap-6 p-6">
+        {/* Left: Form Section */}
+        <div className="bg-white rounded-xl shadow-lg ring-1 ring-black ring-opacity-5">
+          <div className="h-full overflow-y-auto p-8 space-y-8">
+            {/* Header bar */}
+            <div className="flex items-center justify-between pb-6 border-b border-gray-200">
+              <div className="text-xl font-bold text-gray-900">{form.getValues("name")}</div>
+              <div className="flex items-center gap-3">
+                {process.env.NEXT_PUBLIC_DEV_NO_AUTH === "true" && (
+                  <span className="text-xs rounded-full bg-amber-100 text-amber-800 px-3 py-1 font-medium">Dev mode: no auth</span>
+                )}
+                {saveMutation.isPending && (
+                  <span className="text-xs px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 border border-yellow-200 font-medium">Saving…</span>
+                )}
+                {!saveMutation.isPending && savedAt && (
+                  <span className="text-xs px-3 py-1 rounded-full bg-green-100 text-green-700 border border-green-200 font-medium">All changes saved</span>
+                )}
+                <button
+                  onClick={async () => {
+                    try { await (async () => { /* flush autosave */ })(); } catch {}
+                    try { await saveMutation.mutateAsync(form.getValues()); setSavedAt(Date.now()); } catch(e){ console.error('Save failed', e); }
+                  }}
+                  className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full shadow-lg hover:from-indigo-500 hover:to-purple-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => {
+                    const currentId = draftId || record?.id;
+                    if (currentId) router.push(`/admin/chatbots/${currentId}/conversations`);
+                  }}
+                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!(draftId || record?.id)}
+                  title={!(draftId || record?.id) ? 'Save once to view history' : undefined}
+                >
+                  Conversation history
+                </button>
+                <button
+                  onClick={onViewLive}
+                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-600 to-teal-600 rounded-full shadow-lg hover:from-green-500 hover:to-teal-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={autoStatus === 'saving' || !!form.formState.errors.slug || saveMutation.isPending}
+                  title={!!form.formState.errors.slug ? 'Fix slug to save' : undefined}
+                >
+                  View live chatbot
+                </button>
+              </div>
             </div>
+            <FormProvider {...form}>
+              {active === "instructions" && <InstructionsForm />}
+              {active === "knowledge" && <KnowledgeForm botId={draftId || record?.id} />}
+              {active === "logic" && <LogicForm />}
+              {active === "theme" && <ThemeForm />}
+              {active === "integrations" && <IntegrationsForm />}
+              {active === "model" && <ModelForm />}
+              {active === "settings" && <SettingsForm botId={draftId || record?.id} />}
+            </FormProvider>
           </div>
-          <FormProvider {...form}>
-            {active === "instructions" && <InstructionsForm />}
-            {active === "knowledge" && <KnowledgeForm />}
-            {active === "logic" && <LogicForm />}
-            {active === "theme" && <ThemeForm />}
-            {active === "integrations" && <IntegrationsForm />}
-            {active === "model" && <ModelForm />}
-            {active === "settings" && <SettingsForm botId={draftId || record?.id} />}
-          </FormProvider>
         </div>
 
-        <div className="h-full border-l border-gray-800 bg-[#0a0a0a]">
+        {/* Right: Preview Section */}
+        <div className="bg-gray-900 rounded-xl shadow-2xl overflow-hidden">
           <ChatPreview {...preview} />
         </div>
       </div>

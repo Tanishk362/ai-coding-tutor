@@ -30,6 +30,7 @@ export const logicSchema = z.object({
 });
 
 export const themeSchema = z.object({
+  theme_template: z.enum(["default", "modern"]).default("default"),
   brand_color: z
     .string()
     .regex(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i, "Invalid hex color"),

@@ -18,7 +18,6 @@ export type PreviewProps = {
   knowledgeBase?: string | null;
   model?: string;
   temperature?: number;
-  rules?: { settings?: { wait_for_reply?: boolean } } | null;
 };
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -36,7 +35,6 @@ export function ChatPreview({
   knowledgeBase,
   model,
   temperature,
-  rules,
 }: PreviewProps) {
   const [messages, setMessages] = useState<Msg[]>([
     { role: "assistant", content: greeting || "How can I help you today?" },
@@ -51,11 +49,8 @@ export function ChatPreview({
     setInput("");
   };
 
-  const waitForReply = !!rules?.settings?.wait_for_reply;
-
   const send = async () => {
     if (!input.trim() && !imagePreview) return;
-    if (waitForReply && loading) return; // block until reply
     const text = input.trim();
     setInput("");
     // If there's an attached image, embed as markdown inline with the text (preview-only)
@@ -160,24 +155,30 @@ export function ChatPreview({
           <div className="text-xs text-gray-400">Assistant is typing…</div>
         )}
 
-        {/* Starter question chips intentionally hidden for a cleaner greeting */}
+        {starterQuestions?.length > 0 && messages.length <= 1 && (
+          <div className="flex flex-wrap gap-2">
+            {starterQuestions.map((q, i) => (
+              <button
+                key={i}
+                onClick={() => setInput(q)}
+                className="text-xs px-2 py-1 rounded-full border border-gray-700 bg-[#141414] hover:bg-[#1a1a1a] text-gray-200"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Composer */}
       <div className="p-3 border-t border-gray-800">
         <div className="flex items-center gap-2">
           <input
-            className="flex-1 border border-gray-700 bg-[#141414] text-white rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50"
+            className="flex-1 border border-gray-700 bg-[#141414] text-white rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30"
             placeholder={tagline || "Ask your AI Teacher…"}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                if (!(waitForReply && loading)) send();
-              }
-            }}
-            disabled={waitForReply ? loading : false}
+            onKeyDown={(e) => e.key === "Enter" && send()}
           />
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
             const f = e.target.files?.[0];
@@ -193,12 +194,11 @@ export function ChatPreview({
             📷
           </button>
           <button
-            onClick={() => !(waitForReply && loading) && send()}
-            disabled={waitForReply ? loading : false}
-            className="px-3 py-2 border rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={send}
+            className="px-3 py-2 border rounded-md"
             style={{ borderColor: brandColor, color: brandColor }}
           >
-            {waitForReply && loading ? 'Waiting…' : 'Send'}
+            Send
           </button>
         </div>
         {imagePreview && (
@@ -227,4 +227,3 @@ function renderMathPreview(raw: string): string {
   txt = txt.replace(/\*(.+?)\*/g, '<em>$1<\/em>');
   return txt;
 }
-
