@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { RenderedMessage } from "./RenderedMessage"; // handles markdown + math normalization (converts [ ... ] to LaTeX)
 import type { PublicChatProps } from "./PublicChat";
 import { shouldShowActionButtons } from "@/src/components/utils";
-import { renameConversation, deleteConversation } from "@/src/data/conversations";
+import { renamePublicConversation, deletePublicConversation } from "@/src/data/publicConversationMutations";
 import { listPublicConversations, listPublicMessages } from "@/src/data/publicConversations";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -48,7 +48,7 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
   // Light mode toggle (UI only)
   const [light, setLight] = useState(false);
   const bgMain = light ? "bg-white text-black" : "bg-[#0a0a0a] text-white";
-  const bgPanel = light ? "bg-white" : "bg-[#0a0a0a]";
+  const bgPanel = light ? "bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60" : "bg-[#0a0a0a]/70 backdrop-blur supports-[backdrop-filter]:bg-[#0a0a0a]/50";
   const bgChip = light ? "bg-gray-100" : "bg-[#141414]";
   const borderClr = light ? "border-gray-200" : "border-gray-800";
   const borderInput = light ? "border-gray-300" : "border-gray-700";
@@ -75,23 +75,30 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
     (async () => {
       try {
         // Restore cached sessions first for instant UX
+        let cachedConvs: Array<{ id: string; title: string; updated_at: string }> = [];
+        let cachedMessages: Record<string, Msg[]> = {};
         if (typeof window !== 'undefined') {
           const raw = localStorage.getItem(sessionsKey);
             if (raw) {
               try {
                 const parsed = JSON.parse(raw) as { convs?: Array<{id:string; title:string; updated_at:string}>; messages?: Record<string, Msg[]> };
-                if (parsed?.convs) setConvs(parsed.convs);
-                if (parsed?.messages) setMessageCache(parsed.messages);
+                if (parsed?.convs) { setConvs(parsed.convs); cachedConvs = parsed.convs; }
+                if (parsed?.messages) { setMessageCache(parsed.messages); cachedMessages = parsed.messages; }
               } catch {}
           }
         }
         const rows = await listPublicConversations(slug, { pageSize: 50 });
-        setConvs(rows as any);
+        // Merge server rows with any locally cached convs (e.g., fallback-created)
+        const byId: Record<string, { id: string; title: string; updated_at: string }> = {};
+        for (const r of rows as any) byId[r.id] = r;
+        for (const c of cachedConvs) if (!byId[c.id]) byId[c.id] = c;
+        const merged = Object.values(byId).sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+        setConvs(merged as any);
         const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
-        if (saved && rows.find(r => r.id === saved)) {
+        if (saved && (merged as any).find((r: any) => r.id === saved)) {
           setActiveCid(saved);
-        } else if (rows.length) {
-          setActiveCid(rows[0].id);
+        } else if (merged.length) {
+          setActiveCid(merged[0].id);
         } else {
           setActiveCid(null);
           setMessages(greeting ? [{ role: 'assistant', content: greeting }] : []);
@@ -225,9 +232,41 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
     const title = prompt("Edit chat name", chatName || "New Chat")?.trim();
     if (!title || !activeCid) return;
     try {
-      const updated = await renameConversation(activeCid, title);
+      // If this is a local-only conversation, update locally without server call
+      if (activeCid.startsWith('local-')) {
+        const now = new Date().toISOString();
+        setChatName(title);
+        setConvs((arr) => arr.map((c) => (c.id === activeCid ? { ...c, title, updated_at: now } : c)));
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem(sessionsKey);
+            if (raw) {
+              const parsed = JSON.parse(raw) as { convs?: Array<{id:string; title:string; updated_at:string}>; messages?: Record<string, Msg[]> };
+              if (parsed?.convs) {
+                parsed.convs = parsed.convs.map((c) => c.id === activeCid ? { ...c, title, updated_at: now } : c);
+                localStorage.setItem(sessionsKey, JSON.stringify(parsed));
+              }
+            }
+          } catch {}
+        }
+        return;
+      }
+      const updated = await renamePublicConversation(slug, activeCid, title);
       setChatName(updated.title);
       setConvs((arr) => arr.map((c) => (c.id === activeCid ? { ...c, title: updated.title, updated_at: updated.updated_at } : c)));
+      // also persist to cache blob
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem(sessionsKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as { convs?: Array<{id:string; title:string; updated_at:string}>; messages?: Record<string, Msg[]> };
+            if (parsed?.convs) {
+              parsed.convs = parsed.convs.map((c) => c.id === activeCid ? { ...c, title: updated.title, updated_at: updated.updated_at } : c);
+              localStorage.setItem(sessionsKey, JSON.stringify(parsed));
+            }
+          }
+        } catch {}
+      }
     } catch (e) {
       console.warn("rename failed", e);
     }
@@ -266,14 +305,38 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
 
   async function onDeleteChat(id: string) {
     try {
-      await deleteConversation(id);
+      if (id.startsWith('local-')) {
+        // local-only remove
+      } else {
+        await deletePublicConversation(slug, id);
+      }
       setConvs((prev) => prev.filter((c) => c.id !== id));
       if (activeCid === id) {
-        const next = convs.find((c) => c.id !== id);
+        // Choose next conversation from updated list
+        const remaining = convs.filter((c) => c.id !== id);
+        const next = remaining[0];
         setActiveCid(next?.id || null);
-        setMessages(greeting ? [{ role: "assistant", content: greeting }] : []);
+        if (next?.id && messageCache[next.id]) {
+          setMessages(messageCache[next.id]);
+        } else {
+          setMessages(greeting ? [{ role: "assistant", content: greeting }] : []);
+        }
       }
       setMessageCache((cache) => { const { [id]: _removed, ...rest } = cache; return rest; });
+      // remove from persisted cache
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem(sessionsKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as { convs?: Array<{id:string; title:string; updated_at:string}>; messages?: Record<string, Msg[]> };
+            if (parsed) {
+              if (parsed.convs) parsed.convs = parsed.convs.filter((c) => c.id !== id);
+              if (parsed.messages) delete parsed.messages[id];
+              localStorage.setItem(sessionsKey, JSON.stringify(parsed));
+            }
+          }
+        } catch {}
+      }
     } catch (e) {
       console.warn("delete failed", e);
     }
@@ -319,14 +382,14 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
           `fixed inset-y-0 left-0 z-40 w-64 sm:w-72 border-r ${borderClr} ${bgPanel} ` +
           `flex flex-col transform transition-transform duration-300 ease-in-out ` +
           `${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ` +
-          `md:static md:translate-x-0`
+          `md:static md:translate-x-0 shadow-xl md:shadow-none`
         }
         role="complementary"
         aria-label="Conversations sidebar"
       >
-        <div className="p-3 flex items-center justify-between">
+  <div className={`p-3 flex items-center justify-between border-b ${borderClr}`}>
           <div className="font-semibold truncate">{headerTitle}</div>
-          <button onClick={onNewChat} className={`text-xs px-2 py-1 border ${borderInput} rounded-md hover:bg-[#f5f5f5] ${light ? "" : "hover:bg-[#141414]"}`}>+ New</button>
+          <button onClick={onNewChat} className={`text-xs px-2 py-1 border ${borderInput} rounded-md transition-colors hover:bg-[#f5f5f5] ${light ? "" : "hover:bg-[#141414]"}`}>+ New</button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {convs.map((c) => (
@@ -337,7 +400,7 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
                 setActiveCid(c.id);
                 setSidebarOpen(false);
               }}
-              className={`w-full text-left px-3 py-2 text-sm ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"} ${activeCid === c.id ? (light ? "bg-gray-100" : "bg-[#141414]") : ""}`}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"} ${activeCid === c.id ? (light ? "bg-gray-100" : "bg-[#141414]") : ""}`}
             >
               {c.title || "Untitled"}
             </button>
@@ -346,16 +409,16 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
         {/* Bottom controls to match the screenshot */}
         <div className={`p-3 border-t ${borderClr} space-y-2`}>
           <div className={`text-xs ${light ? "text-gray-600" : "text-gray-400"}`}>{mm}:{ss}</div>
-          <button type="button" onClick={() => setLight((v) => !v)} className={`w-full text-left text-sm px-3 py-2 rounded border ${borderInput} ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>
+          <button type="button" onClick={() => setLight((v) => !v)} className={`w-full text-left text-sm px-3 py-2 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>
             Light Mode
           </button>
-          <button type="button" onClick={onRename} className={`w-full text-left text-sm px-3 py-2 rounded border ${borderInput} ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>
+          <button type="button" onClick={onRename} className={`w-full text-left text-sm px-3 py-2 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>
             Edit Chat Name
           </button>
-          <button type="button" onClick={() => activeCid && onDeleteChat(activeCid)} className={`w-full text-left text-sm px-3 py-2 rounded border ${borderInput} ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>
+          <button type="button" onClick={() => activeCid && onDeleteChat(activeCid)} className={`w-full text-left text-sm px-3 py-2 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>
             Delete Chat
           </button>
-          <button type="button" onClick={() => setPaused((p) => !p)} className={`w-full text-left text-sm px-3 py-2 rounded border ${borderInput} ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>
+          <button type="button" onClick={() => setPaused((p) => !p)} className={`w-full text-left text-sm px-3 py-2 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>
             Pause
           </button>
         </div>
@@ -364,7 +427,7 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
       {/* Main */}
       <div className="flex-1 flex flex-col">
         {/* Top bar with bot avatar and chat name */}
-        <div className={`p-3 border-b ${borderClr} ${bgPanel} flex items-center justify-between`}>
+        <div className={`p-3 border-b ${borderClr} ${bgPanel} flex items-center justify-between sticky top-0 z-10`}>        
           <div className="flex items-center gap-2">
             {/* Hamburger for mobile */}
             <button
@@ -372,7 +435,7 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
               aria-label="Open sidebar"
               aria-expanded={sidebarOpen}
               onClick={() => setSidebarOpen(true)}
-              className={`md:hidden mr-1 inline-flex h-8 w-8 items-center justify-center rounded border ${borderInput} ${light ? 'hover:bg-gray-100' : 'hover:bg-[#141414]'}`}
+              className={`md:hidden mr-1 inline-flex h-8 w-8 items-center justify-center rounded border ${borderInput} transition-colors ${light ? 'hover:bg-gray-100' : 'hover:bg-[#141414]'}`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="3" y1="6" x2="21" y2="6" />
@@ -384,17 +447,17 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
             <div className="font-semibold text-sm md:text-base">{chatName}</div>
           </div>
           <div className="flex gap-2">
-            <button onClick={onRename} className={`text-xs md:text-sm px-2 py-1 border ${borderInput} rounded-md ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>Edit Chat Name</button>
-            <button onClick={() => activeCid && onDeleteChat(activeCid)} className={`text-xs md:text-sm px-2 py-1 border ${borderInput} rounded-md ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>Delete Chat</button>
+            <button onClick={onRename} className={`text-xs md:text-sm px-2 py-1 border ${borderInput} rounded-md transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>Edit Chat Name</button>
+            <button onClick={() => activeCid && onDeleteChat(activeCid)} className={`text-xs md:text-sm px-2 py-1 border ${borderInput} rounded-md transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>Delete Chat</button>
           </div>
         </div>
 
         {/* Messages */}
-        <div className={`flex-1 overflow-y-auto p-3 md:p-4 space-y-3 ${bgPanel}`}>
+  <div className={`flex-1 overflow-y-auto p-3 md:p-6 space-y-3 ${bgPanel}`}>
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[90%] sm:max-w-[85%] md:max-w-[80%] px-3 py-2 text-sm md:text-base ${radius}`}
+                className={`max-w-[90%] sm:max-w-[85%] md:max-w-[80%] px-4 py-3 text-sm md:text-base ${radius} shadow-sm`}
                 style={{ background: m.role === "user" ? brandColor : bubbleBotBg, color: m.role === "user" ? bubbleUserText : bubbleBotText }}
               >
                 <RenderedMessage content={m.content} light={light} />
@@ -402,21 +465,21 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
                   <div className="mt-2 flex flex-wrap gap-2 text-[11px] md:text-xs">
                     <button
                       type="button"
-                      className={`px-2 py-1 rounded border ${borderInput} ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
+                      className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
                       onClick={() => sendText(`Explain: ${m.content}`)}
                     >
                       Explain
                     </button>
                     <button
                       type="button"
-                      className={`px-2 py-1 rounded border ${borderInput} ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
+                      className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
                       onClick={() => sendText(`Show steps for: ${m.content}`)}
                     >
                       Show Steps
                     </button>
                     <button
                       type="button"
-                      className={`px-2 py-1 rounded border ${borderInput} ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
+                      className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
                       onClick={() => sendText(`Give me a similar problem to practice based on: ${m.content}`)}
                     >
                       Try Similar Problem
@@ -433,17 +496,17 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
         {/* Composer */}
         <form onSubmit={onSubmit} className={`p-2 md:p-3 ${bgPanel} border-t ${borderClr}`}>
           <div className="flex items-center gap-2">
-            <input ref={inputRef} className={`flex-1 border ${borderInput} ${light ? "bg-white text-black" : "bg-[#141414] text-white"} rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 text-sm md:text-base`} placeholder={tagline || "Ask your AI Teacher…"} />
+            <input ref={inputRef} className={`flex-1 border ${borderInput} ${light ? "bg-white text-black" : "bg-[#141414] text-white"} rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 text-sm md:text-base transition-shadow focus:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]`} placeholder={tagline || "Ask your AI Teacher…"} />
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
-            <button type="button" onClick={onPickImage} className={`px-2 py-2 border rounded-md ${borderInput} ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>📷</button>
-            <button type="submit" disabled={loading && waitForReply} className="px-3 py-2 border rounded-md text-sm md:text-base" style={{ borderColor: brandColor, color: brandColor }}>{loading && waitForReply ? 'Waiting…' : 'Send'}</button>
+            <button type="button" onClick={onPickImage} className={`px-2 py-2 border rounded-xl ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>📷</button>
+            <button type="submit" disabled={loading && waitForReply} className="px-3 py-2 border rounded-xl text-sm md:text-base transition-shadow hover:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]" style={{ borderColor: brandColor, color: brandColor }}>{loading && waitForReply ? 'Waiting…' : 'Send'}</button>
           </div>
           {imagePreview && (
             <div className="mt-2 flex items-center gap-3 text-sm">
               <img src={imagePreview} alt="preview" className="h-14 w-14 object-cover rounded" />
               <div className="flex gap-2">
-                <button type="button" className={`px-2 py-1 border rounded-md ${borderInput}`} onClick={sendImage}>Attach</button>
-                <button type="button" className={`px-2 py-1 border rounded-md ${borderInput}`} onClick={() => { setImagePreview(null); if (fileRef.current) fileRef.current.value = ""; }}>Cancel</button>
+                <button type="button" className={`px-2 py-1 border rounded-xl ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`} onClick={sendImage}>Attach</button>
+                <button type="button" className={`px-2 py-1 border rounded-xl ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`} onClick={() => { setImagePreview(null); if (fileRef.current) fileRef.current.value = ""; }}>Cancel</button>
               </div>
             </div>
           )}

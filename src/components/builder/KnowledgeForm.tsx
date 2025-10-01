@@ -2,14 +2,20 @@
 
 import { useFormContext } from "react-hook-form";
 import type { KnowledgeValues } from "./schemas";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { supabase } from "@/src/lib/supabase";
 
-export function KnowledgeForm() {
+const devNoAuth = typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEV_NO_AUTH === "true";
+
+export function KnowledgeForm({ botId }: { botId?: string }) {
   const form = useFormContext<KnowledgeValues>();
   const [input, setInput] = useState("");
   const kbLen = form.watch("knowledge_base")?.length || 0;
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [vecStatus, setVecStatus] = useState<string | null>(null);
+  const [vecError, setVecError] = useState<string | null>(null);
+  const fileNameForText = useMemo(() => "manual.txt", []);
 
   const add = () => {
     const v = input.trim();
@@ -38,6 +44,17 @@ export function KnowledgeForm() {
       reader.onerror = () => reject(reader.error || new Error("Read failed"));
       reader.readAsText(file);
     });
+
+  const getUserId = useCallback(async (): Promise<string | null> => {
+    try {
+      const u = await supabase.auth.getUser();
+      const uid = u?.data?.user?.id || null;
+      if (uid) return uid;
+      return devNoAuth ? "00000000-0000-0000-0000-000000000000" : null;
+    } catch {
+      return devNoAuth ? "00000000-0000-0000-0000-000000000000" : null;
+    }
+  }, []);
 
   const onUploadFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -78,6 +95,70 @@ export function KnowledgeForm() {
     }
   }, [form]);
 
+  const saveTextareaToVector = useCallback(async () => {
+    setVecError(null);
+    setVecStatus("Saving to vector DB…");
+    try {
+      if (!botId) throw new Error("Bot not created yet. Save once to get a bot ID.");
+      const userId = await getUserId();
+      if (!userId) throw new Error("You must be logged in to save knowledge.");
+      const text = (form.getValues("knowledge_base") || "").toString().trim();
+      if (!text) throw new Error("Knowledge base is empty.");
+      const res = await fetch("/api/knowledge/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          chatbotId: botId,
+          inputType: "text",
+          data: text,
+          fileName: fileNameForText,
+        }),
+      });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out?.error || "Failed to save to vector DB");
+      setVecStatus(`Saved ${out.inserted}/${out.chunks} chunks to vector DB.`);
+    } catch (e: any) {
+      setVecError(e?.message || "Failed to save to vector DB.");
+      setVecStatus(null);
+    }
+  }, [botId, form, getUserId, fileNameForText]);
+
+  const onUploadPdfToVector = useCallback(async (file: File | null) => {
+    if (!file) return;
+    setVecError(null);
+    setVecStatus("Uploading PDF and saving to vector DB…");
+    try {
+      if (!botId) throw new Error("Bot not created yet. Save once to get a bot ID.");
+      const userId = await getUserId();
+      if (!userId) throw new Error("You must be logged in to save knowledge.");
+      if (!file.name.toLowerCase().endsWith(".pdf")) throw new Error("Only PDF is supported for vector upload.");
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("Read failed"));
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch("/api/knowledge/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          chatbotId: botId,
+          inputType: "pdf",
+          data: base64, // data URL accepted by server
+          fileName: file.name,
+        }),
+      });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out?.error || "Failed to save PDF to vector DB");
+      setVecStatus(`Saved ${out.inserted}/${out.chunks} chunks from ${file.name}.`);
+    } catch (e: any) {
+      setVecError(e?.message || "Failed to save PDF to vector DB.");
+      setVecStatus(null);
+    }
+  }, [botId, getUserId]);
+
   return (
     <div className="space-y-4">
       <div>
@@ -93,6 +174,24 @@ export function KnowledgeForm() {
           <span>{form.formState?.errors?.knowledge_base?.message as any}</span>
           <span>{kbLen} chars</span>
         </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={saveTextareaToVector}
+            className="text-sm px-3 py-1 rounded border border-blue-600 hover:bg-blue-600/20 disabled:opacity-50"
+            disabled={!botId}
+            title={!botId ? "Save once to get a bot ID" : undefined}
+          >
+            Save textarea to Vector DB
+          </button>
+          <label className="text-xs text-gray-400">(Creates chunks and stores embeddings)</label>
+        </div>
+        {(vecStatus || vecError) && (
+          <div className="mt-2 text-xs">
+            {vecStatus && <div className="text-green-400">{vecStatus}</div>}
+            {vecError && <div className="text-red-400">{vecError}</div>}
+          </div>
+        )}
       </div>
 
       <div>
@@ -109,6 +208,20 @@ export function KnowledgeForm() {
           {importError && (
             <div className="text-red-400 mt-1">{importError}</div>
           )}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm mb-2">Upload PDF directly to Vector DB</label>
+        <input
+          type="file"
+          accept=".pdf"
+          onChange={(e) => onUploadPdfToVector(e.target.files?.[0] || null)}
+          className="text-sm"
+          disabled={!botId}
+        />
+        <div className="mt-2 text-xs text-gray-400">
+          Only .pdf. We will extract text, chunk (~300–500 words), embed with OpenAI, and store in Supabase.
         </div>
       </div>
 

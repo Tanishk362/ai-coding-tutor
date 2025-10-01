@@ -20,6 +20,7 @@ export interface ChatbotRecord {
     notion?: boolean;
     [k: string]: unknown;
   };
+  theme_template: string;
   brand_color: string;
   avatar_url: string | null;
   bubble_style: BubbleStyle;
@@ -49,6 +50,7 @@ export interface ChatbotDraft {
     slack?: boolean;
     notion?: boolean;
   };
+  theme_template?: string;
   brand_color?: string;
   avatar_url?: string | null;
   bubble_style?: BubbleStyle;

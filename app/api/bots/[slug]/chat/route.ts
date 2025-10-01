@@ -26,7 +26,89 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
     }
 
     const system = buildSystemPrompt(bot);
+
+    // ——— Retrieval: embed latest user question and fetch top similar knowledge chunks ———
+    function cosineSimilarity(a: number[], b: number[]) {
+      let dot = 0;
+      let na = 0;
+      let nb = 0;
+      const len = Math.min(a.length, b.length);
+      for (let i = 0; i < len; i++) {
+        const x = a[i] || 0;
+        const y = b[i] || 0;
+        dot += x * y;
+        na += x * x;
+        nb += y * y;
+      }
+      if (na === 0 || nb === 0) return 0;
+      return dot / (Math.sqrt(na) * Math.sqrt(nb));
+    }
+
+    // Find latest user message as the query to ground on
+    const latestUser = [...messages].reverse().find((m) => m.role === "user");
+    let knowledgeSystemMessage: { role: "system"; content: string } | null = null;
+    if (latestUser && typeof latestUser.content === "string" && latestUser.content.trim()) {
+      try {
+        // We use OpenAI embeddings even if chatbot model is DeepSeek; skip retrieval if no OpenAI key.
+        const embKey = process.env.OPENAI_API_KEY;
+        if (embKey) {
+          const openaiEmb = new OpenAI({ apiKey: embKey });
+          const e = await openaiEmb.embeddings.create({ model: "text-embedding-3-small", input: latestUser.content });
+          const qvec = Array.isArray(e.data[0]?.embedding)
+            ? (e.data[0]!.embedding as number[])
+            : Array.from(e.data[0]!.embedding as unknown as Iterable<number>);
+
+          // Query Supabase for knowledge chunks for this bot
+          const db = (supabaseService() || supabaseServer);
+          let top: Array<{ id: string; chunk_text: string; file_name?: string | null; similarity?: number }> = [];
+          try {
+            // Fallback path: fetch subset and rank client-side
+            const { data: rows, error } = await db
+              .from("knowledge_chunks")
+              .select("id, chunk_text, file_name, embedding")
+              .eq("chatbot_id", bot.id)
+              .limit(1000);
+            if (!error && Array.isArray(rows)) {
+              const scored = rows
+                .map((r: any) => {
+                  const vec: number[] = Array.isArray(r.embedding)
+                    ? (r.embedding as number[])
+                    : Array.from(r.embedding as unknown as Iterable<number>);
+                  return { id: r.id, chunk_text: r.chunk_text, file_name: r.file_name, similarity: cosineSimilarity(qvec, vec) };
+                })
+                .sort((a, b) => (b.similarity! - a.similarity!))
+                .slice(0, 3);
+              top = scored;
+            }
+          } catch (e) {
+            // Swallow retrieval errors to keep chat working
+            top = [];
+          }
+
+          if (top.length) {
+            const kbContext = top
+              .map((t, i) => `# Source ${i + 1}${t.file_name ? ` (${t.file_name})` : ""}\n${t.chunk_text}`)
+              .join("\n\n---\n\n");
+            // Truncate to keep tokens in check
+            const MAX_CTX = 8000; // characters
+            const trimmed = kbContext.length > MAX_CTX ? kbContext.slice(0, MAX_CTX) : kbContext;
+            knowledgeSystemMessage = {
+              role: "system",
+              content: `Knowledge Context (most relevant chunks):\n${trimmed}`,
+            };
+          }
+        }
+      } catch (e) {
+        // Ignore retrieval errors; proceed without knowledge context
+      }
+    }
+
     let reply = "";
+    const finalMessages = [
+      { role: "system", content: system },
+      ...(knowledgeSystemMessage ? [knowledgeSystemMessage] : []),
+      ...messages,
+    ] as Array<{ role: "system" | "user" | "assistant"; content: string }>;
     if (isDeepSeekModel(bot.model)) {
       const model = bot.model || "deepseek-reasoner";
       const res = await fetch("https://api.deepseek.com/chat/completions", {
@@ -37,7 +119,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
         },
         body: JSON.stringify({
           model,
-          messages: [{ role: "system", content: system }, ...messages],
+          messages: finalMessages,
           temperature: Number(bot.temperature ?? 0.6),
         }),
       });
@@ -49,7 +131,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
       const completion = await openai.chat.completions.create({
         model: normalizeOpenAIModel(bot.model),
         temperature: Number(bot.temperature ?? 0.6),
-        messages: [{ role: "system", content: system }, ...messages],
+        messages: finalMessages,
       });
       reply = completion.choices?.[0]?.message?.content ?? "";
     }

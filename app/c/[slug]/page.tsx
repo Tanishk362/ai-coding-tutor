@@ -8,7 +8,12 @@ export default async function PublicBotPage({ params }: { params: Promise<{ slug
   const bot = await getBotForPublic(slug);
   if (!bot) {
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center bg-[#0a0a0a] text-white p-6">
+      <div className="relative min-h-[100dvh] flex items-center justify-center bg-[#0a0a0a] text-white p-6 overflow-hidden">
+        {/* Premium gradient backdrop */}
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-[#0b0b0f] via-[#0a0a12] to-[#0a0a0a]" />
+        {/* Subtle radial glows */}
+        <div className="pointer-events-none absolute inset-0 -z-10 [background:radial-gradient(60%_60%_at_50%_-10%,rgba(59,130,246,0.18),transparent)]" />
+        <div className="pointer-events-none absolute inset-0 -z-10 [background:radial-gradient(40%_40%_at_80%_20%,rgba(168,85,247,0.12),transparent)]" />
         <div className="max-w-xl text-center">
           <h1 className="text-2xl font-semibold">Chatbot not found</h1>
           <p className="mt-2 text-sm text-gray-400">This link is invalid or the bot is not public.</p>
@@ -18,7 +23,13 @@ export default async function PublicBotPage({ params }: { params: Promise<{ slug
   }
 
   return (
-    <div className="fixed inset-0 w-screen h-screen bg-[#0a0a0a] text-white overflow-hidden">
+    <div className="fixed inset-0 w-screen h-screen text-white overflow-hidden">
+      {/* Premium gradient backdrop */}
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-[#0b0b0f] via-[#0a0a12] to-[#0a0a0a]" />
+      {/* Subtle radial glows for depth */}
+      <div className="pointer-events-none absolute inset-0 -z-10 [background:radial-gradient(60%_60%_at_50%_-10%,rgba(59,130,246,0.18),transparent)]" />
+      <div className="pointer-events-none absolute inset-0 -z-10 [background:radial-gradient(40%_40%_at_15%_20%,rgba(236,72,153,0.10),transparent)]" />
+      <div className="pointer-events-none absolute inset-0 -z-10 [background:radial-gradient(35%_35%_at_85%_75%,rgba(168,85,247,0.12),transparent)]" />
       <ErrorBoundary fallback={<div className="p-4 text-red-500">Something went wrong while rendering the chat.</div>}>
         <ChatClient
           bot={{

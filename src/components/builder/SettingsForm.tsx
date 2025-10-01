@@ -60,7 +60,7 @@ export function SettingsForm({ botId }: { botId?: string }) {
       <div>
         <label className="block text-sm mb-1">Name</label>
         <input
-          className="w-full bg-transparent border border-gray-700 rounded px-3 py-2"
+          className="w-full border border-gray-300 rounded-md px-4 py-3 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200"
           {...form.register("name")}
           placeholder="My chatbot"
         />
@@ -69,7 +69,7 @@ export function SettingsForm({ botId }: { botId?: string }) {
       <div>
         <label className="block text-sm mb-1">Tagline (chat input placeholder)</label>
         <input
-          className="w-full bg-transparent border border-gray-700 rounded px-3 py-2"
+          className="w-full border border-gray-300 rounded-md px-4 py-3 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200"
           {...form.register("tagline")}
           placeholder="Ask your AI Teacher…"
         />
