@@ -30,6 +30,10 @@ create table if not exists public.chatbots (
 alter table if exists public.chatbots
   add column if not exists tagline text default 'Ask your AI Teacher…';
 
+-- Add theme_template column for UI switching
+alter table if exists public.chatbots
+  add column if not exists theme_template text default 'default';
+
 -- Indexes
 create index if not exists chatbots_slug_idx on public.chatbots (slug);
 create index if not exists chatbots_public_slug_idx on public.chatbots (is_public, slug);

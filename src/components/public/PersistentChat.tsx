@@ -25,7 +25,9 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
     // New optional rules/settings surface (if provided by parent fetch)
     rules,
   } = props as any;
-  const waitForReply: boolean = !!rules?.settings?.wait_for_reply;
+  // Enforce: user cannot send another message until reply returns
+  // Default to true (always wait), independent of rules
+  const waitForReply: boolean = true;
 
   // Sidebar state
   const [convs, setConvs] = useState<Array<{ id: string; title: string; updated_at: string }>>([]);
@@ -166,7 +168,9 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
   }
 
   async function sendText(content: string) {
-    const text = content.trim();
+  // Prevent sending while waiting for a reply
+  if (loading) return;
+  const text = content.trim();
     if (!text) return;
     // Basic image detection (markdown image). Future: integrate vision API.
     const containsImage = /!\[[^\]]*\]\([^\)]+\)/.test(text);
@@ -221,8 +225,8 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // If wait_for_reply is enabled and a reply is pending, prevent sending
-    if (waitForReply && loading) return;
+  // Prevent sending while waiting for a reply
+  if (loading) return;
     const v = inputRef.current?.value ?? "";
     if (inputRef.current) inputRef.current.value = "";
     sendText(v);
@@ -355,6 +359,7 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
     reader.readAsDataURL(f);
   }
   async function sendImage() {
+    if (loading) return; // don't allow attaching while waiting
     if (!imagePreview) return;
     // Embed the image as Markdown so it renders similarly to ChatGPT behavior for inline content.
     const md = `![uploaded image](${imagePreview})`;
@@ -466,21 +471,21 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
                     <button
                       type="button"
                       className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
-                      onClick={() => sendText(`Explain: ${m.content}`)}
+                      onClick={() => !loading && sendText(`Explain: ${m.content}`)}
                     >
                       Explain
                     </button>
                     <button
                       type="button"
                       className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
-                      onClick={() => sendText(`Show steps for: ${m.content}`)}
+                      onClick={() => !loading && sendText(`Show steps for: ${m.content}`)}
                     >
                       Show Steps
                     </button>
                     <button
                       type="button"
                       className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
-                      onClick={() => sendText(`Give me a similar problem to practice based on: ${m.content}`)}
+                      onClick={() => !loading && sendText(`Give me a similar problem to practice based on: ${m.content}`)}
                     >
                       Try Similar Problem
                     </button>
@@ -489,7 +494,16 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
               </div>
             </div>
           ))}
-          {typingIndicator && loading && <div className={`text-xs ${light ? "text-gray-600" : "text-gray-400"}`}>Assistant is typing…</div>}
+          {typingIndicator && loading && (
+            <div className="flex">
+              <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${borderInput} ${light ? 'bg-white/60' : 'bg-white/5'} shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]`}>
+                <span className="bg-gradient-to-r from-sky-400 via-fuchsia-400 to-violet-400 bg-clip-text text-transparent text-xs font-semibold tracking-wide">
+                  {name}
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+              </div>
+            </div>
+          )}
           {/* Starter question chips intentionally hidden for a cleaner greeting */}
         </div>
 
@@ -499,7 +513,7 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
             <input ref={inputRef} className={`flex-1 border ${borderInput} ${light ? "bg-white text-black" : "bg-[#141414] text-white"} rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 text-sm md:text-base transition-shadow focus:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]`} placeholder={tagline || "Ask your AI Teacher…"} />
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
             <button type="button" onClick={onPickImage} className={`px-2 py-2 border rounded-xl ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>📷</button>
-            <button type="submit" disabled={loading && waitForReply} className="px-3 py-2 border rounded-xl text-sm md:text-base transition-shadow hover:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]" style={{ borderColor: brandColor, color: brandColor }}>{loading && waitForReply ? 'Waiting…' : 'Send'}</button>
+            <button type="submit" disabled={loading} className="px-3 py-2 border rounded-xl text-sm md:text-base transition-shadow hover:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]" style={{ borderColor: brandColor, color: brandColor }}>{loading ? 'Waiting…' : 'Send'}</button>
           </div>
           {imagePreview && (
             <div className="mt-2 flex items-center gap-3 text-sm">

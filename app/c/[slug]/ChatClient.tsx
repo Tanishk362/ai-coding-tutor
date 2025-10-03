@@ -14,7 +14,7 @@ export default function ChatClient({ bot }: { bot: BotLite }) {
       slug={bot.slug}
       name={bot.name}
       avatarUrl={bot.avatar_url}
-      brandColor={bot.brand_color || "#3B82F6"}
+      brandColor={bot.brand_color || "#3b76f6ff"}
       bubbleStyle={bot.bubble_style || "rounded"}
       greeting={bot.greeting}
       typingIndicator={bot.typing_indicator !== false}

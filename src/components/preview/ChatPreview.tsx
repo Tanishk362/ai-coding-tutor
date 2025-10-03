@@ -50,6 +50,7 @@ export function ChatPreview({
   };
 
   const send = async () => {
+    if (loading) return; // block multiple sends until reply
     if (!input.trim() && !imagePreview) return;
     const text = input.trim();
     setInput("");
@@ -152,7 +153,14 @@ export function ChatPreview({
           </div>
         ))}
         {typingIndicator && loading && (
-          <div className="text-xs text-gray-400">Assistant is typing…</div>
+          <div className="flex">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/5 shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]">
+              <span className="bg-gradient-to-r from-sky-400 via-fuchsia-400 to-violet-400 bg-clip-text text-transparent text-xs font-semibold tracking-wide">
+                {name}
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+            </div>
+          </div>
         )}
 
         {/* Starter question chips hidden in preview as requested */}
@@ -166,7 +174,7 @@ export function ChatPreview({
             placeholder={tagline || "Ask your AI Teacher…"}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
+            onKeyDown={(e) => e.key === "Enter" && !loading && send()}
           />
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
             const f = e.target.files?.[0];
@@ -182,11 +190,11 @@ export function ChatPreview({
             📷
           </button>
           <button
-            onClick={send}
+            onClick={() => !loading && send()}
             className="px-3 py-2 border rounded-md"
             style={{ borderColor: brandColor, color: brandColor }}
           >
-            Send
+            {loading ? 'Waiting…' : 'Send'}
           </button>
         </div>
         {imagePreview && (

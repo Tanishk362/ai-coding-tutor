@@ -40,6 +40,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   const slug = searchParams.get("slug");
+  const ensure = searchParams.get("ensure");
   if (!id && !slug) return NextResponse.json({ error: "Provide id or slug" }, { status: 400 });
 
   let q = sc.from("chatbots").select("*").limit(1);
@@ -47,6 +48,27 @@ export async function GET(req: Request) {
   else q = (q as any).eq("slug", slug);
   const { data, error } = await (q as any).maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  if (!data && ensure && slug) {
+    const insert = {
+      name: slug,
+      slug,
+      is_public: true,
+      is_deleted: false,
+      owner_id: DUMMY_OWNER_ID,
+      greeting: "How can I help you today?",
+      tagline: "Ask your AI Teacher…",
+      brand_color: "#3B82F6",
+      bubble_style: "rounded",
+      typing_indicator: true,
+      model: "gpt-4o-mini",
+      temperature: 0.6,
+    } as any;
+    const up = await sc.from("chatbots").upsert(insert, { onConflict: "slug" }).select("*").maybeSingle();
+    if (up.error) return NextResponse.json({ error: up.error.message }, { status: 400 });
+    return NextResponse.json({ bot: up.data ?? insert });
+  }
+
   return NextResponse.json({ bot: data ?? null });
 }
 

@@ -1,39 +1,34 @@
-
 "use client";
 
-// This page depends on client-only APIs (e.g., useSearchParams) and should not be prerendered.
-export const dynamic = 'force-dynamic';
-
-import React, { useState, useRef, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { getChatbotById, type Chatbot } from '../api/chat/supabaseClient';
+import React, { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { getChatbotById, type Chatbot } from "../api/chat/supabaseClient";
+import { RenderedMessage } from "@/components/RenderedMessage"; 
 
 interface Message {
+  role: "user" | "assistant";
   text: string;
   image?: string | null;
 }
 
-// Exporting a plain function instead of a React.FC constant helps Next.js
-// infer the correct App Router types for the page and avoids type mismatch
-// errors in the generated .next/types/validator.ts.
-// Render a Suspense boundary at the page level so React can bail out to CSR safely
 export default function PremiumChatbot() {
-  return (
-    <Suspense fallback={<div style={{ padding: '32px', textAlign: 'center' }}>Loading…</div>}>
-      <PremiumChatbotInner />
-    </Suspense>
-  );
+  return <PremiumChatbotInner />;
 }
 
 function PremiumChatbotInner() {
   const searchParams = useSearchParams();
-  const botIdParam = searchParams.get('botId');
+  const botIdParam = searchParams.get("botId");
+
   const [chatbot, setChatbot] = useState<Chatbot | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState<string>('');
+  const [input, setInput] = useState<string>("");
   const [image, setImage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [loading, setLoading] = useState(false);
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Load chatbot info
   useEffect(() => {
     const load = async () => {
       if (!botIdParam) return;
@@ -45,11 +40,41 @@ function PremiumChatbotInner() {
     load();
   }, [botIdParam]);
 
-  const handleSend = () => {
-    if (input.trim() || image) {
-      setMessages([...messages, { text: input, image }]);
-      setInput('');
-      setImage(null);
+  // Auto-scroll to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  const handleSend = async () => {
+    if (!input.trim() && !image) return;
+    if (loading) return; // ✅ block multiple sends
+
+    const newUserMessage: Message = { role: "user", text: input, image };
+    setMessages((prev) => [...prev, newUserMessage]);
+    setInput("");
+    setImage(null);
+
+    setLoading(true);
+
+    // Add placeholder bot message for streaming
+    setMessages((prev) => [...prev, { role: "assistant", text: "" }]);
+
+    try {
+      // Replace with your backend streaming API
+      const reply = await fakeStreamingCall(input, (chunk) => {
+        setMessages((prev) => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last && last.role === "assistant") {
+            last.text += chunk;
+          }
+          return updated;
+        });
+      });
+
+      // Final reply is already built by streaming
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -59,7 +84,7 @@ function PremiumChatbotInner() {
       const reader = new FileReader();
       reader.onload = (ev: ProgressEvent<FileReader>) => {
         const result = ev.target?.result;
-        if (typeof result === 'string') {
+        if (typeof result === "string") {
           setImage(result);
         }
       };
@@ -68,57 +93,108 @@ function PremiumChatbotInner() {
   };
 
   return (
-    <div style={{
-      maxWidth: '600px',
-      margin: '40px auto',
-      borderRadius: '20px',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-      background: 'linear-gradient(135deg, #f8fafc 0%, #e0e7ff 100%)',
-      padding: '32px',
-      fontFamily: 'Inter, sans-serif',
-    }}>
-      <h1 style={{ textAlign: 'center', fontWeight: 700, fontSize: '2rem', marginBottom: '24px', color: '#6366f1' }}>
-        {chatbot?.name || 'Premium Chatbot'}
-      </h1>
-      <div style={{ minHeight: '300px', marginBottom: '24px', background: '#fff', borderRadius: '12px', padding: '16px', boxShadow: '0 2px 8px rgba(99,102,241,0.08)' }}>
-        {messages.length === 0 && <p style={{ color: '#a1a1aa', textAlign: 'center' }}>Start the conversation...</p>}
+    <div className="flex flex-col h-screen bg-neutral-100">
+      {/* Header */}
+      <div className="p-4 border-b bg-white shadow">
+        <h1 className="text-lg font-semibold text-gray-800">
+          {chatbot?.name || "Chatbot"}
+        </h1>
+      </div>
+
+      {/* Chat messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+        {messages.length === 0 && (
+          <p className="text-center text-gray-400">
+            Start the conversation...
+          </p>
+        )}
+
         {messages.map((msg, idx) => (
-          <div key={idx} style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            {msg.image && <img src={msg.image} alt="uploaded" style={{ maxWidth: '120px', borderRadius: '8px', marginBottom: '8px' }} />}
-            <span style={{ background: '#6366f1', color: '#fff', padding: '8px 16px', borderRadius: '16px', fontWeight: 500 }}>{msg.text}</span>
+          <div
+            key={idx}
+            className={`flex ${
+              msg.role === "user" ? "justify-end" : "justify-start"
+            }`}
+          >
+            <div
+              className={`max-w-[70%] rounded-2xl px-4 py-2 shadow ${
+                msg.role === "user"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white border border-gray-200 text-gray-800"
+              }`}
+            >
+              {msg.image && (
+                <img
+                  src={msg.image}
+                  alt="uploaded"
+                  className="max-w-[120px] rounded-md mb-2"
+                />
+              )}
+              {msg.role === "assistant" ? (
+                <RenderedMessage content={msg.text} light />
+              ) : (
+                <span>{msg.text}</span>
+              )}
+            </div>
           </div>
         ))}
+
+        <div ref={chatEndRef} />
       </div>
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+
+      {/* Input */}
+      <div className="p-4 border-t bg-white flex items-center gap-2">
         <input
           type="text"
           value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="Type your message..."
-          style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid #d1d5db', fontSize: '1rem' }}
+          disabled={loading} // ✅ disable while waiting
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !loading && handleSend()}
+          placeholder={
+            loading ? "Waiting for reply..." : "Type your message..."
+          }
+          className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
         />
         <input
           type="file"
           accept="image/*"
           ref={fileInputRef}
-          style={{ display: 'none' }}
+          className="hidden"
           onChange={handleImageUpload}
+          disabled={loading}
         />
         <button
-          type="button"
-          onClick={() => fileInputRef.current && fileInputRef.current.click()}
-          style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: '12px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600 }}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={loading}
+          className="bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm hover:bg-gray-300 disabled:opacity-50"
         >
-          Upload Image
+          📷
         </button>
         <button
-          type="button"
           onClick={handleSend}
-          style={{ background: '#22d3ee', color: '#fff', border: 'none', borderRadius: '12px', padding: '8px 16px', cursor: 'pointer', fontWeight: 600 }}
+          disabled={loading}
+          className={`px-4 py-2 rounded-lg text-sm font-medium text-white ${
+            loading
+              ? "bg-gray-400 cursor-not-allowed"
+              : "bg-blue-600 hover:bg-blue-700"
+          }`}
         >
-          Send
+          {loading ? "Waiting..." : "Send"}
         </button>
       </div>
     </div>
   );
+}
+
+// Example streaming simulation
+async function fakeStreamingCall(
+  query: string,
+  onChunk: (chunk: string) => void
+): Promise<string> {
+  const words = `This is a streamed reply to: ${query}`.split(" ");
+  for (let i = 0; i < words.length; i++) {
+    await new Promise((res) => setTimeout(res, 200));
+    onChunk(words[i] + " ");
+  }
+  return words.join(" ");
 }

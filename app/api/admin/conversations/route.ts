@@ -1,19 +1,22 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { supabaseServer, supabaseService } from "@/src/lib/supabaseServer";
+import { supabaseServer, supabaseService, createSupabaseServerClient } from "@/src/lib/supabaseServer";
 
 // Admin: list conversations for a bot you own.
 // Auth: expects Authorization: Bearer <supabase access token>
 export async function GET(req: NextRequest) {
   try {
-    const auth = req.headers.get("authorization") || req.headers.get("Authorization");
-    const token = auth?.toLowerCase().startsWith("bearer ") ? auth.split(" ")[1] : null;
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { data: userData, error: userErr } = await supabaseServer.auth.getUser(token);
-    if (userErr || !userData?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Prefer cookie-based auth
+  const supabase = await createSupabaseServerClient();
+  let { data: userData, error: userErr } = await supabase.auth.getUser();
+    // Fallback to Bearer token (back-compat)
+    if (userErr || !userData?.user) {
+      const auth = req.headers.get("authorization") || req.headers.get("Authorization");
+      const token = auth?.toLowerCase().startsWith("bearer ") ? auth.split(" ")[1] : null;
+      if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      ({ data: userData, error: userErr } = await supabaseServer.auth.getUser(token));
+      if (userErr || !userData?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const userId = userData.user.id;
+    const userId = userData!.user!.id;
 
     const url = new URL(req.url);
     const botId = url.searchParams.get("botId");

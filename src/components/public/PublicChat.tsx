@@ -48,7 +48,9 @@ export default function PublicChat({
     setConversationId(null);
   };
 
-  const waitForReply = !!rules?.settings?.wait_for_reply;
+  // Enforce: user cannot send another message until the current reply arrives
+  // Default to true (always wait), regardless of rules presence
+  const waitForReply = true;
 
   const send = async () => {
     if (!input.trim()) return;
@@ -173,14 +175,14 @@ export default function PublicChat({
             placeholder="Ask me anything"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !(waitForReply && loading) && send()}
+            onKeyDown={(e) => e.key === "Enter" && !loading && send()}
           />
           <button
-            onClick={() => !(waitForReply && loading) && send()}
+            onClick={() => !loading && send()}
             className="px-3 py-2 border rounded-md"
             style={{ borderColor: brandColor, color: brandColor }}
           >
-            {waitForReply && loading ? 'Waiting…' : 'Send'}
+            {loading ? 'Waiting…' : 'Send'}
           </button>
         </div>
       </div>

@@ -37,6 +37,8 @@ export function ChatRuntime({
   };
 
   const send = async () => {
+    // Prevent sending while a reply is pending
+    if (loading) return;
     if (!input.trim()) return;
     const text = input.trim();
     setInput("");
@@ -77,7 +79,16 @@ export function ChatRuntime({
             </div>
           </div>
         ))}
-        {typingIndicator && loading && <div className="text-xs text-gray-500">Assistant is typing…</div>}
+        {typingIndicator && loading && (
+          <div className="flex">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-200 bg-white/60 shadow-[0_0_0_1px_rgba(0,0,0,0.03)_inset]">
+              <span className="text-xs font-semibold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-pink-600 to-violet-600">
+                {name}
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+            </div>
+          </div>
+        )}
         {starterQuestions?.length > 0 && messages.length <= 1 && (
           <div className="flex flex-wrap gap-2">
             {starterQuestions.map((q, i) => (
@@ -88,8 +99,8 @@ export function ChatRuntime({
       </div>
       <div className="p-3 bg-white border-t border-gray-200 text-black">
         <div className="flex items-center gap-2">
-          <input className="flex-1 border rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Ask me anything" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
-          <button onClick={send} className="px-3 py-2 border rounded-md" style={{ borderColor: brandColor, color: brandColor }}>Send</button>
+          <input className="flex-1 border rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Ask me anything" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !loading && send()} />
+          <button onClick={() => !loading && send()} disabled={loading} className="px-3 py-2 border rounded-md" style={{ borderColor: brandColor, color: brandColor }}>{loading ? 'Waiting…' : 'Send'}</button>
         </div>
       </div>
     </div>

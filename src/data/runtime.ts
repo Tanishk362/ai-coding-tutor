@@ -8,6 +8,7 @@ export async function getBotForPublic(slug: string) {
   const dev = typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEV_NO_AUTH === "true";
 
   // Build filters first; call .maybeSingle() at the end to avoid chaining after .single().
+  // Note: omit theme_template here to avoid failing on older DBs; UI will handle missing value.
   let builder: any = supabaseServer
     .from("chatbots")
     .select(
