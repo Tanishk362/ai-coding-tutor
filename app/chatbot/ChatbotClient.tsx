@@ -17,7 +17,7 @@ export default function ChatbotClient() {
 
 function PremiumChatbotInner() {
   const searchParams = useSearchParams();
-  const botIdParam = searchParams.get("botId");
+  const botIdParam = searchParams?.get("botId") || null;
 
   const [chatbot, setChatbot] = useState<Chatbot | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
