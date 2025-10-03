@@ -3,7 +3,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { getChatbotById, type Chatbot } from "../api/chat/supabaseClient";
-import { RenderedMessage } from "@/components/RenderedMessage"; 
+// Fix import path for Vercel case-sensitive builds
+import { RenderedMessage } from "@/src/components/public/RenderedMessage"; 
 
 interface Message {
   role: "user" | "assistant";
