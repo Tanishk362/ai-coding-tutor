@@ -437,10 +437,8 @@ function ChatBubble({
       >
         {isUser ? (
           <RenderedMessage content={content} light={true} />
-        ) : typing ? (
-          <Typewriter content={content} />
         ) : (
-          <RenderedMessage content={content} light={true} />
+          <Typewriter content={content} />
         )}
       </div>
     </div>
