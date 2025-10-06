@@ -3,6 +3,9 @@ import ErrorBoundary from "@/src/components/ErrorBoundary";
 import ChatClient from "./ChatClient";
 import ModernChatUI from "@/src/components/chat/ModernChatUI";
 
+// Force SSR so theme changes reflect immediately and avoid caching the branch
+export const dynamic = "force-dynamic";
+
 // Next.js 15: dynamic route params are async. Await before using.
 export default async function PublicBotPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -32,7 +35,10 @@ export default async function PublicBotPage({ params }: { params: Promise<{ slug
       <div className="pointer-events-none absolute inset-0 -z-10 [background:radial-gradient(40%_40%_at_15%_20%,rgba(236,72,153,0.10),transparent)]" />
       <div className="pointer-events-none absolute inset-0 -z-10 [background:radial-gradient(35%_35%_at_85%_75%,rgba(168,85,247,0.12),transparent)]" />
       <ErrorBoundary fallback={<div className="p-4 text-red-500">Something went wrong while rendering the chat.</div>}>
-  {(bot as any).theme_template === "modern" ? (
+        {(() => {
+          const theme = String(((bot as any).theme_template ?? (bot as any).theme ?? "default")).toLowerCase();
+          return theme === "modern";
+        })() ? (
           <ModernChatUI
             slug={bot.slug}
             name={bot.name ?? "Chatbot"}
