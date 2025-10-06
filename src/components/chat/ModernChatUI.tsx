@@ -52,6 +52,8 @@ export default function ModernChatUI({
   const viewportRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Ephemeral: which message index should animate (assistant only). Not persisted.
+  const [animateIndex, setAnimateIndex] = useState<number | null>(null);
 
   const radius = bubbleStyle === "square" ? "rounded-md" : "rounded-2xl";
 
@@ -109,6 +111,7 @@ export default function ModernChatUI({
       const reply = res.ok ? (data.reply || "") : (data.error || "Sorry, I couldn’t respond.");
       setMessages((m) => {
         const updated: Msg[] = [...m, { role: "assistant", content: reply }];
+        setAnimateIndex(updated.length - 1);
         const id = activeCid || cidBefore || data?.conversationId;
         if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
         return updated;
@@ -198,7 +201,9 @@ export default function ModernChatUI({
         const ms = await listPublicMessages(slug, activeCid);
         const asMsgs: Msg[] = (ms as any).map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content as string }));
         const nextMsgs: Msg[] = asMsgs.length === 0 && greeting ? [{ role: "assistant", content: greeting }] : asMsgs;
-        setMessages(nextMsgs as Msg[]);
+  setMessages(nextMsgs as Msg[]);
+  // Never animate on conversation load
+  setAnimateIndex(null);
         setMessageCache((c) => ({ ...c, [activeCid]: nextMsgs as Msg[] }));
         const active = convs.find((c) => c.id === activeCid);
         if (active?.title) setChatName(active.title);
@@ -360,6 +365,8 @@ export default function ModernChatUI({
               brandColor={brandColor}
               radius={radius}
               typing={typingIndicator && loading && i === messages.length - 1}
+              animate={m.role === 'assistant' && i === animateIndex}
+              onDone={() => setAnimateIndex(null)}
             />
           ))}
           {typingIndicator && loading && (
@@ -418,12 +425,16 @@ function ChatBubble({
   brandColor,
   radius,
   typing,
+  animate,
+  onDone,
 }: {
   role: "user" | "assistant";
   content: string;
   brandColor: string;
   radius: string;
   typing?: boolean;
+  animate?: boolean;
+  onDone?: () => void;
 }) {
   const isUser = role === "user";
 
@@ -437,15 +448,17 @@ function ChatBubble({
       >
         {isUser ? (
           <RenderedMessage content={content} light={true} />
+        ) : animate ? (
+          <Typewriter content={content} onDone={onDone} />
         ) : (
-          <Typewriter content={content} />
+          <RenderedMessage content={content} light={true} />
         )}
       </div>
     </div>
   );
 }
 
-function Typewriter({ content }: { content: string }) {
+function Typewriter({ content, onDone }: { content: string; onDone?: () => void }) {
   // Animate characters one-by-one; when done, switch to full markdown+math rendering
   const [done, setDone] = useState(false);
   const [index, setIndex] = useState(0);
@@ -461,6 +474,7 @@ function Typewriter({ content }: { content: string }) {
         if (i + 1 >= total) {
           clearInterval(id);
           setDone(true);
+          try { onDone && onDone(); } catch {}
           return total;
         }
         return i + 1;

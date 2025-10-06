@@ -47,8 +47,11 @@ function normalizeMath(raw: string): string {
   let txt = raw;
   // Fix common LLM mistake: \left$ ... \right$ -> \left[ ... \right]
   // Allow optional whitespace between command and '$'
-  txt = txt.replace(/\\left\s*\$/g, '\\left[');
-  txt = txt.replace(/\\right\s*\$/g, '\\right]');
+    // Fix common LLM mistake intended for evaluation bar at bounds:
+    // e.g., "\\left$ f(x) \\right$_0^1" should be "\\left. f(x) \\right|_0^1"
+    // Convert \left$ -> \left.  and \right$ -> \right|
+    txt = txt.replace(/\\left\s*\$/g, '\\left.');
+    txt = txt.replace(/\\right\s*\$/g, '\\right\\|');
   // Convert standalone \[ ... \] to $$ ... $$
   // Use [\s\S] instead of dot-all flag for broader TS target compatibility
   txt = txt.replace(/\\\[([\s\S]+?)\\\]/g, (_, inner) => `$$${inner.trim()}$$`);
