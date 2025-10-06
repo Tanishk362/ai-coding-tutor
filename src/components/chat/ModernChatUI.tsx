@@ -465,7 +465,7 @@ function Typewriter({ content }: { content: string }) {
         }
         return i + 1;
       });
-    }, 15);
+    }, 20); // slight throttle for smoother live rendering
     return () => clearInterval(id);
   }, [content, characters]);
 
@@ -474,7 +474,47 @@ function Typewriter({ content }: { content: string }) {
     return <RenderedMessage content={content} light={true} />;
   }
 
-  const visible = content.slice(0, index);
+  const visibleRaw = content.slice(0, index);
+
+  // Hide trailing, incomplete math segments so raw LaTeX doesn't flash mid-typing
+  function sanitizeIncompleteMath(s: string): string {
+    let out = s;
+    // 1) Incomplete $$... block: if odd count of "$$", trim from last occurrence
+    const dollarDollarMatches = [...out.matchAll(/\$\$/g)].map(m => m.index ?? -1).filter(i => i >= 0);
+    if (dollarDollarMatches.length % 2 === 1) {
+      const cut = dollarDollarMatches[dollarDollarMatches.length - 1];
+      out = out.slice(0, cut);
+    }
+    // 2) Incomplete $... inline (exclude $$)
+    const singleDollarIdxs: number[] = [];
+    for (let i = 0; i < out.length; i++) {
+      if (out[i] === '$') {
+        if (out[i + 1] === '$') { i++; continue; } // skip $$ pair marker
+        // ignore escaped \$
+        if (i > 0 && out[i - 1] === '\\') continue;
+        singleDollarIdxs.push(i);
+      }
+    }
+    if (singleDollarIdxs.length % 2 === 1) {
+      const cut = singleDollarIdxs[singleDollarIdxs.length - 1];
+      out = out.slice(0, cut);
+    }
+    // 3) Incomplete \( ... \) inline
+    const lastOpenParen = out.lastIndexOf('\\(');
+    const lastCloseParen = out.lastIndexOf('\\)');
+    if (lastOpenParen !== -1 && lastOpenParen > lastCloseParen) {
+      out = out.slice(0, lastOpenParen);
+    }
+    // 4) Incomplete \[ ... \] block
+    const lastOpenBracket = out.lastIndexOf('\\[');
+    const lastCloseBracket = out.lastIndexOf('\\]');
+    if (lastOpenBracket !== -1 && lastOpenBracket > lastCloseBracket) {
+      out = out.slice(0, lastOpenBracket);
+    }
+    return out;
+  }
+
+  const visible = sanitizeIncompleteMath(visibleRaw);
   return (
     <div>
       {/* Live-render markdown and math for the visible substring */}
