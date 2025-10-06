@@ -477,13 +477,8 @@ function Typewriter({ content }: { content: string }) {
   const visible = content.slice(0, index);
   return (
     <div>
-      <div className="whitespace-pre-wrap">
-        {visible.split("").map((ch, idx) => (
-          <motion.span key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.05 }}>
-            {ch}
-          </motion.span>
-        ))}
-      </div>
+      {/* Live-render markdown and math for the visible substring */}
+      <RenderedMessage content={visible} light={true} />
       <div className="mt-1 text-gray-400 text-sm">…</div>
     </div>
   );
