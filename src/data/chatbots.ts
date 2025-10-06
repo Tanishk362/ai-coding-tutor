@@ -131,7 +131,6 @@ export async function createChatbot(payload: Omit<ChatbotDraft, "slug"> & { name
     avatar_url: base.avatar_url ?? null,
     bubble_style: base.bubble_style ?? "rounded",
     typing_indicator: base.typing_indicator ?? true,
-    voice_mode: (base as any).voice_mode ?? "text+audio",
     model: base.model ?? "gpt-4o-mini",
     temperature: base.temperature ?? 0.6,
     is_public: base.is_public ?? false,
