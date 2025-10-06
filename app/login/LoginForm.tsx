@@ -6,7 +6,7 @@ import { supabase } from "@/src/lib/supabase";
 export default function LoginForm({ fallbackNext }: { fallbackNext: string }) {
   const router = useRouter();
   const params = useSearchParams();
-  const next = (params?.get("next") as string | null) || fallbackNext;
+  const next = params?.get("next") || fallbackNext;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<string | null>(null);

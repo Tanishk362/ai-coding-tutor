@@ -6,8 +6,8 @@ const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-// Server client: prefer Service Role for server-side routes (falls back to ANON in dev)
-export const supabaseServer = createClient(URL, SERVICE || ANON);
+// Legacy server client (no cookies). Prefer createSupabaseServerClient below.
+export const supabaseServer = createClient(URL, ANON);
 
 // Next.js server-side Supabase client with cookies + headers.
 export async function createSupabaseServerClient() {

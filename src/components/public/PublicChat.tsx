@@ -21,6 +21,7 @@ export type PublicChatProps = {
   model?: string;
   temperature?: number;
   rules?: { settings?: { wait_for_reply?: boolean } } | null;
+  voice_mode?: "text" | "text+audio" | "audio";
 };
 
 export default function PublicChat({
