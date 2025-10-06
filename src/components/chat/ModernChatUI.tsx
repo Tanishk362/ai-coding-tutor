@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { RenderedMessage } from "@/src/components/public/RenderedMessage";
+import { listPublicConversations, listPublicMessages } from "@/src/data/publicConversations";
+import { renamePublicConversation, deletePublicConversation } from "@/src/data/publicConversationMutations";
 
 export type ModernChatUIProps = {
   slug: string;
@@ -33,13 +35,23 @@ export default function ModernChatUI({
   tagline,
   model,
 }: ModernChatUIProps) {
-  const [messages, setMessages] = useState<Msg[]>([
-    { role: "assistant", content: greeting || "How can I help you today?" },
-  ]);
+  // Conversations state (multi-chat)
+  const [convs, setConvs] = useState<Array<{ id: string; title: string; updated_at: string }>>([]);
+  const [activeCid, setActiveCid] = useState<string | null>(null);
+  const [chatName, setChatName] = useState<string>(name || "New Chat");
+  const storageKey = useMemo(() => `modern-public-chat:${slug}:active`, [slug]);
+  const sessionsKey = useMemo(() => `modern-public-chat:${slug}:sessions:v1`, [slug]);
+
+  // Messages for current conversation
+  const [messages, setMessages] = useState<Msg[]>(
+    greeting ? [{ role: "assistant", content: greeting }] : []
+  );
+  const [messageCache, setMessageCache] = useState<Record<string, Msg[]>>({});
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const radius = bubbleStyle === "square" ? "rounded-md" : "rounded-2xl";
 
@@ -48,25 +60,72 @@ export default function ModernChatUI({
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, loading]);
 
+  // Ensure there is a conversation; create on server if needed
+  async function ensureConversation(): Promise<string | null> {
+    if (activeCid) return activeCid;
+    try {
+      const now = new Date();
+      const titleSuggestion = chatName || `Chat on ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      const resp = await fetch(`/api/bots/${encodeURIComponent(slug)}/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: titleSuggestion }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(json?.error || 'Failed to create conversation');
+      const c = json.conversation as { id: string; title: string; updated_at: string };
+      setConvs((prev) => [{ id: c.id, title: c.title || 'New Chat', updated_at: c.updated_at }, ...prev]);
+      setActiveCid(c.id);
+      setChatName(c.title || 'New Chat');
+      return c.id;
+    } catch (e) {
+      console.warn('ensureConversation failed', e);
+      return null;
+    }
+  }
+
   async function send() {
     if (loading) return;
     const text = input.trim();
     if (!text) return;
     setInput("");
-    setMessages((m) => [...m, { role: "user", content: text }]);
+    const cidBefore = await ensureConversation();
+    setMessages((m) => {
+      const updated: Msg[] = [...m, { role: "user", content: text }];
+      const id = activeCid || cidBefore;
+      if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
+      return updated;
+    });
     setLoading(true);
     try {
       const history = messages.slice(-13);
+      const payload = [...history, { role: "user", content: text }];
       const res = await fetch(`/api/bots/${encodeURIComponent(slug)}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...history, { role: "user", content: text }] }),
+        body: JSON.stringify({ messages: payload, conversationId: cidBefore ?? undefined }),
       });
       const data = await res.json();
-      const reply = res.ok ? data.reply || "" : data.error || "Sorry, I couldn’t respond.";
-      setMessages((m) => [...m, { role: "assistant", content: reply }]);
+      const reply = res.ok ? (data.reply || "") : (data.error || "Sorry, I couldn’t respond.");
+      setMessages((m) => {
+        const updated: Msg[] = [...m, { role: "assistant", content: reply }];
+        const id = activeCid || cidBefore || data?.conversationId;
+        if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
+        return updated;
+      });
+      if (!cidBefore && data?.conversationId) {
+        const newId: string = data.conversationId;
+        setActiveCid(newId);
+        const autoTitle = (text || 'New Chat').slice(0, 60);
+        setChatName(autoTitle);
+        setConvs((prev) => [{ id: newId, title: autoTitle, updated_at: new Date().toISOString() }, ...prev]);
+      }
     } catch (e: any) {
-      setMessages((m) => [...m, { role: "assistant", content: e?.message || "Network error" }]);
+      setMessages((m) => {
+        const updated: Msg[] = [...m, { role: "assistant", content: e?.message || "Network error" }];
+        if (activeCid) setMessageCache((c) => ({ ...c, [activeCid]: updated }));
+        return updated;
+      });
     } finally {
       setLoading(false);
     }
@@ -76,12 +135,99 @@ export default function ModernChatUI({
     if (e.key === "Enter" && !loading) send();
   }
 
+  // Load conversations on mount and restore active conversation from storage
+  useEffect(() => {
+    (async () => {
+      try {
+        // Restore cached sessions first for instant UX
+        let cachedConvs: Array<{ id: string; title: string; updated_at: string }> = [];
+        let cachedMessages: Record<string, Msg[]> = {};
+        if (typeof window !== 'undefined') {
+          const raw = localStorage.getItem(sessionsKey);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw) as { convs?: Array<{id:string; title:string; updated_at:string}>; messages?: Record<string, Msg[]> };
+              if (parsed?.convs) { setConvs(parsed.convs); cachedConvs = parsed.convs; }
+              if (parsed?.messages) { setMessageCache(parsed.messages); cachedMessages = parsed.messages; }
+            } catch {}
+          }
+        }
+        const rows = await listPublicConversations(slug, { pageSize: 50 });
+        const byId: Record<string, { id: string; title: string; updated_at: string }> = {};
+        for (const r of rows as any) byId[r.id] = r;
+        for (const c of cachedConvs) if (!byId[c.id]) byId[c.id] = c;
+        const merged = Object.values(byId).sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+        setConvs(merged as any);
+        const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
+        if (saved && (merged as any).find((r: any) => r.id === saved)) {
+          setActiveCid(saved);
+        } else if (merged.length) {
+          setActiveCid(merged[0].id);
+        } else {
+          setActiveCid(null);
+          setMessages(greeting ? [{ role: 'assistant', content: greeting }] : []);
+        }
+      } catch (e) {
+        console.warn('load convs failed', e);
+      }
+    })();
+  }, [slug, storageKey, sessionsKey, greeting]);
+
+  // Persist active conversation id
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (activeCid) localStorage.setItem(storageKey, activeCid); else localStorage.removeItem(storageKey);
+  }, [activeCid, storageKey]);
+
+  // Persist sessions (conversation list + messages cache)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(sessionsKey, JSON.stringify({ convs, messages: messageCache }));
+    } catch {}
+  }, [convs, messageCache, sessionsKey]);
+
+  // Load messages when active conversation changes
+  useEffect(() => {
+    if (!activeCid) return;
+    (async () => {
+      try {
+        if (messageCache[activeCid]) {
+          setMessages(messageCache[activeCid]); // optimistic
+        }
+        const ms = await listPublicMessages(slug, activeCid);
+        const asMsgs: Msg[] = (ms as any).map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content as string }));
+        const nextMsgs: Msg[] = asMsgs.length === 0 && greeting ? [{ role: "assistant", content: greeting }] : asMsgs;
+        setMessages(nextMsgs as Msg[]);
+        setMessageCache((c) => ({ ...c, [activeCid]: nextMsgs as Msg[] }));
+        const active = convs.find((c) => c.id === activeCid);
+        if (active?.title) setChatName(active.title);
+      } catch (e) {
+        console.warn("load messages failed", e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCid]);
+
   return (
     <div className="relative h-[100dvh] w-full bg-gradient-to-b from-sky-50 to-emerald-50 text-gray-900 flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-10 backdrop-blur bg-white/60 border-b border-sky-100">
+      <header className="sticky top-0 z-20 backdrop-blur bg-white/60 border-b border-sky-100">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            {/* Hamburger for mobile */}
+            <button
+              type="button"
+              aria-label="Open sidebar"
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden mr-1 inline-flex h-9 w-9 items-center justify-center rounded-md border border-sky-200 bg-white/70 hover:bg-white"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
             <img
               src={avatarUrl || "/favicon.ico"}
               onError={(e) => ((e.currentTarget.src = "/favicon.ico"))}
@@ -96,6 +242,110 @@ export default function ModernChatUI({
           <div className="text-[11px] text-gray-500">Powered by AI</div>
         </div>
       </header>
+
+      {/* Sidebar overlay */}
+      {sidebarOpen && (
+        <button
+          aria-label="Close sidebar"
+          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      {/* Sidebar panel */}
+      <aside
+        className={
+          `fixed inset-y-0 left-0 z-40 w-64 sm:w-72 border-r border-sky-100 bg-white/90 backdrop-blur ` +
+          `flex flex-col transform transition-transform duration-300 ease-in-out ` +
+          `${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ` +
+          `md:static md:translate-x-0 md:w-72 hidden md:flex md:bg-white/70`
+        }
+      >
+        <div className="p-3 border-b border-sky-100 flex items-center justify-between">
+          <div className="font-semibold truncate">{chatName || name || "Chatbot"}</div>
+          <button
+            onClick={async () => {
+              try {
+                const now = new Date();
+                const titleSuggestion = `Chat on ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                const resp = await fetch(`/api/bots/${encodeURIComponent(slug)}/conversations`, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: titleSuggestion })
+                });
+                const json = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(json?.error || 'Failed to create conversation');
+                const c = json.conversation as { id: string; title: string; updated_at: string };
+                setConvs((prev) => [{ id: c.id, title: c.title || 'New Chat', updated_at: c.updated_at }, ...prev]);
+                setActiveCid(c.id);
+                setChatName(c.title || 'New Chat');
+                const initial: Msg[] = greeting ? [{ role: 'assistant', content: greeting }] : [];
+                setMessages(initial);
+                setMessageCache((cache) => ({ ...cache, [c.id]: initial }));
+              } catch (e) {
+                console.warn('new chat failed', e);
+              }
+            }}
+            className="text-xs px-2 py-1 border border-sky-200 rounded-md bg-white/70 hover:bg-white"
+          >
+            + New
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {convs.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => {
+                if (activeCid) setMessageCache((cache) => ({ ...cache, [activeCid]: messages }));
+                setActiveCid(c.id);
+                setSidebarOpen(false);
+              }}
+              className={`w-full text-left px-3 py-2 text-sm hover:bg-sky-50 ${activeCid === c.id ? 'bg-sky-50' : ''}`}
+            >
+              {c.title || 'Untitled'}
+            </button>
+          ))}
+        </div>
+        <div className="p-3 border-t border-sky-100 space-y-2">
+          <button
+            type="button"
+            onClick={async () => {
+              const title = prompt("Edit chat name", chatName || "New Chat")?.trim();
+              if (!title || !activeCid) return;
+              try {
+                const updated = await renamePublicConversation(slug, activeCid, title);
+                setChatName(updated.title);
+                setConvs((arr) => arr.map((c) => (c.id === activeCid ? { ...c, title: updated.title, updated_at: updated.updated_at } : c)));
+              } catch (e) {
+                console.warn('rename failed', e);
+              }
+            }}
+            className="w-full text-left text-sm px-3 py-2 rounded border border-sky-200 bg-white/70 hover:bg-white"
+          >
+            Edit Chat Name
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!activeCid) return;
+              try {
+                await deletePublicConversation(slug, activeCid);
+                setConvs((prev) => prev.filter((c) => c.id !== activeCid));
+                const remaining = convs.filter((c) => c.id !== activeCid);
+                const next = remaining[0];
+                setActiveCid(next?.id || null);
+                if (next?.id && messageCache[next.id]) {
+                  setMessages(messageCache[next.id]);
+                } else {
+                  setMessages(greeting ? [{ role: 'assistant', content: greeting }] : []);
+                }
+              } catch (e) {
+                console.warn('delete failed', e);
+              }
+            }}
+            className="w-full text-left text-sm px-3 py-2 rounded border border-sky-200 bg-white/70 hover:bg-white"
+          >
+            Delete Chat
+          </button>
+        </div>
+      </aside>
 
       {/* Messages */}
       <main ref={viewportRef} className="flex-1 overflow-y-auto">
@@ -174,9 +424,6 @@ function ChatBubble({
 }) {
   const isUser = role === "user";
 
-  // Typewriter using Framer Motion: reveal characters one by one
-  const chars = useMemo(() => (isUser ? content.split("") : content.split("")), [content, isUser]);
-
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
@@ -187,8 +434,10 @@ function ChatBubble({
       >
         {isUser ? (
           <RenderedMessage content={content} light={true} />
-        ) : (
+        ) : typing ? (
           <Typewriter content={content} />
+        ) : (
+          <RenderedMessage content={content} light={true} />
         )}
       </div>
     </div>

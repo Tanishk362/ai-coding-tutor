@@ -41,8 +41,8 @@ export default async function PublicBotPage({ params }: { params: Promise<{ slug
       <ErrorBoundary fallback={<div className="p-4 text-red-500">Something went wrong while rendering the chat.</div>}>
         {(() => {
           const theme = String(((bot as any).theme_template ?? (bot as any).theme ?? "default")).toLowerCase();
-          // Force the ChatGPT-like UI (PersistentChat) on mobile for better UX (hamburger + conversations).
-          const useModern = theme === "modern" && !isMobile;
+          // ModernChatUI now supports multi-conversation on mobile as well.
+          const useModern = theme === "modern";
           return useModern;
         })() ? (
           <ModernChatUI
