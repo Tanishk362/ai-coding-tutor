@@ -1,4 +1,5 @@
 import { getBotForPublic } from "@/src/data/runtime";
+import { headers } from "next/headers";
 import ErrorBoundary from "@/src/components/ErrorBoundary";
 import ChatClient from "./ChatClient";
 import ModernChatUI from "@/src/components/chat/ModernChatUI";
@@ -10,6 +11,9 @@ export const dynamic = "force-dynamic";
 export default async function PublicBotPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const bot = await getBotForPublic(slug);
+  // Basic mobile detection from user-agent; used only to pick UI variant.
+  const ua = (await headers()).get("user-agent") || "";
+  const isMobile = /iPhone|iPad|iPod|Android|Mobile/i.test(ua);
   if (!bot) {
     return (
       <div className="relative min-h-[100dvh] flex items-center justify-center bg-[#0a0a0a] text-white p-6 overflow-hidden">
@@ -37,7 +41,9 @@ export default async function PublicBotPage({ params }: { params: Promise<{ slug
       <ErrorBoundary fallback={<div className="p-4 text-red-500">Something went wrong while rendering the chat.</div>}>
         {(() => {
           const theme = String(((bot as any).theme_template ?? (bot as any).theme ?? "default")).toLowerCase();
-          return theme === "modern";
+          // Force the ChatGPT-like UI (PersistentChat) on mobile for better UX (hamburger + conversations).
+          const useModern = theme === "modern" && !isMobile;
+          return useModern;
         })() ? (
           <ModernChatUI
             slug={bot.slug}
