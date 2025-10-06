@@ -210,40 +210,8 @@ export default function ModernChatUI({
   }, [activeCid]);
 
   return (
-    <div className="relative h-[100dvh] w-full bg-gradient-to-b from-sky-50 to-emerald-50 text-gray-900 flex flex-col">
-      {/* Header */}
-      <header className="sticky top-0 z-20 backdrop-blur bg-white/60 border-b border-sky-100">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Hamburger for mobile */}
-            <button
-              type="button"
-              aria-label="Open sidebar"
-              onClick={() => setSidebarOpen(true)}
-              className="md:hidden mr-1 inline-flex h-9 w-9 items-center justify-center rounded-md border border-sky-200 bg-white/70 hover:bg-white"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="3" y1="6" x2="21" y2="6" />
-                <line x1="3" y1="12" x2="21" y2="12" />
-                <line x1="3" y1="18" x2="21" y2="18" />
-              </svg>
-            </button>
-            <img
-              src={avatarUrl || "/favicon.ico"}
-              onError={(e) => ((e.currentTarget.src = "/favicon.ico"))}
-              alt="avatar"
-              className="h-9 w-9 rounded-full ring-1 ring-sky-200"
-            />
-            <div>
-              <div className="font-semibold text-gray-900">{name}</div>
-              {tagline && <div className="text-xs text-gray-500">{tagline}</div>}
-            </div>
-          </div>
-          <div className="text-[11px] text-gray-500">Powered by AI</div>
-        </div>
-      </header>
-
-      {/* Sidebar overlay */}
+    <div className="relative h-[100dvh] w-full bg-gradient-to-b from-sky-50 to-emerald-50 text-gray-900 flex md:flex-row">
+      {/* Sidebar overlay (mobile only) */}
       {sidebarOpen && (
         <button
           aria-label="Close sidebar"
@@ -251,13 +219,13 @@ export default function ModernChatUI({
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      {/* Sidebar panel */}
+      {/* Sidebar panel: off-canvas on mobile, static on desktop */}
       <aside
         className={
           `fixed inset-y-0 left-0 z-40 w-64 sm:w-72 border-r border-sky-100 bg-white/90 backdrop-blur ` +
           `flex flex-col transform transition-transform duration-300 ease-in-out ` +
           `${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ` +
-          `md:static md:translate-x-0 md:w-72 hidden md:flex md:bg-white/70`
+          `md:static md:translate-x-0 md:w-72 md:bg-white/70`
         }
       >
         <div className="p-3 border-b border-sky-100 flex items-center justify-between">
@@ -347,9 +315,43 @@ export default function ModernChatUI({
         </div>
       </aside>
 
-      {/* Messages */}
-      <main ref={viewportRef} className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+      {/* Content column (header + messages + composer) */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Header */}
+        <header className="sticky top-0 z-20 backdrop-blur bg-white/60 border-b border-sky-100">
+          <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {/* Hamburger for mobile */}
+              <button
+                type="button"
+                aria-label="Open sidebar"
+                onClick={() => setSidebarOpen(true)}
+                className="md:hidden mr-1 inline-flex h-9 w-9 items-center justify-center rounded-md border border-sky-200 bg-white/70 hover:bg-white"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              </button>
+              <img
+                src={avatarUrl || "/favicon.ico"}
+                onError={(e) => ((e.currentTarget.src = "/favicon.ico"))}
+                alt="avatar"
+                className="h-9 w-9 rounded-full ring-1 ring-sky-200"
+              />
+              <div>
+                <div className="font-semibold text-gray-900">{name}</div>
+                {tagline && <div className="text-xs text-gray-500">{tagline}</div>}
+              </div>
+            </div>
+            <div className="text-[11px] text-gray-500">Powered by AI</div>
+          </div>
+        </header>
+
+        {/* Messages */}
+        <main ref={viewportRef} className="flex-1 overflow-y-auto">
+          <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
           {messages.map((m, i) => (
             <ChatBubble
               key={i}
@@ -380,28 +382,29 @@ export default function ModernChatUI({
             </div>
           )}
           <div ref={endRef} />
-        </div>
-      </main>
+          </div>
+        </main>
 
-      {/* Composer */}
-      <div className="sticky bottom-0 z-10 bg-white/80 backdrop-blur border-t border-sky-100">
-        <div className="max-w-3xl mx-auto px-4 py-3">
-          <div className="flex items-end gap-2">
-            <input
-              className="flex-1 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-base outline-none focus:ring-2 focus:ring-sky-300"
-              placeholder={tagline || "Ask your AI Teacher…"}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
-            />
-            <button
-              onClick={() => !loading && send()}
-              disabled={loading}
-              className="px-4 py-2.5 rounded-2xl text-white shadow-sm disabled:opacity-60"
-              style={{ background: brandColor }}
-            >
-              {loading ? "Sending…" : "Send"}
-            </button>
+        {/* Composer */}
+        <div className="sticky bottom-0 z-10 bg-white/80 backdrop-blur border-t border-sky-100 pb-[env(safe-area-inset-bottom)]">
+          <div className="max-w-3xl mx-auto px-4 py-3">
+            <div className="flex items-end gap-2">
+              <input
+                className="flex-1 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-base outline-none focus:ring-2 focus:ring-sky-300"
+                placeholder={tagline || "Ask your AI Teacher…"}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={onKeyDown}
+              />
+              <button
+                onClick={() => !loading && send()}
+                disabled={loading}
+                className="px-4 py-2.5 rounded-2xl text-white shadow-sm disabled:opacity-60"
+                style={{ background: brandColor }}
+              >
+                {loading ? "Sending…" : "Send"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
