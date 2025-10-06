@@ -45,6 +45,13 @@ function hasMath(text: string): boolean {
 // Normalize various math notations into standard $inline$ or $$block$$ so remark-math catches them.
 function normalizeMath(raw: string): string {
   let txt = raw;
+  // Convert ```math|latex|tex fenced blocks to display math $$...$$ before markdown parsing
+  txt = txt.replace(/```\s*(math|latex|tex)\s*\n([\s\S]*?)```/gi, (_m, _lang, inner) => {
+    const body = String(inner ?? '').trim();
+    return body ? `$$\n${body}\n$$` : '';
+  });
+  // Convert \( ... \) inline delimiters to $ ... $
+  txt = txt.replace(/\\\(([\s\S]+?)\\\)/g, (_m, inner) => `$${String(inner ?? '').trim()}$`);
   // Fix common LLM mistake: \left$ ... \right$ -> \left[ ... \right]
   // Allow optional whitespace between command and '$'
     // Fix common LLM mistake intended for evaluation bar at bounds:
@@ -65,6 +72,38 @@ function normalizeMath(raw: string): string {
     if (/\$.*\$/.test(content)) return m;
     return `$${content}$`;
   });
+  // Wrap standalone LaTeX environments not already within $$ ... $$
+  // 1) Temporarily mask existing $$...$$ blocks to avoid double-wrapping
+  const mathPlaceholders: string[] = [];
+  txt = txt.replace(/\$\$([\s\S]*?)\$\$/g, (_m, inner) => {
+    const i = mathPlaceholders.push(String(inner)) - 1;
+    return `@@MATH_BLOCK_${i}@@`;
+  });
+  // 2) Wrap any remaining \begin{env}...\end{env} with $$...$$
+  txt = txt.replace(/\\begin\{([a-zA-Z*]+)\}([\s\S]*?)\\end\{\1\}/g, (m) => `$$${m}$$`);
+  // 3) Restore placeholders
+  txt = txt.replace(/@@MATH_BLOCK_(\d+)@@/g, (_m, d) => `$$${mathPlaceholders[Number(d)]}$$`);
+  // 4) Balance stray/unmatched $$ to avoid KaTeX error rendering
+  const dd = [...txt.matchAll(/\$\$/g)].map(m => m.index ?? -1).filter(i => i >= 0);
+  if (dd.length % 2 === 1) {
+    const last = dd[dd.length - 1];
+    txt = txt.slice(0, last) + txt.slice(last + 2);
+  }
+    // Heuristics inside $$ ... $$ blocks to fix common LLM omissions
+    txt = txt.replace(/\$\$([\s\S]*?)\$\$/g, (_m, inner) => {
+      let s = String(inner ?? '');
+      // If there's an \end{bmatrix} but no \begin{bmatrix}, inject the begin
+      if (/\\end\{bmatrix\}/.test(s) && !/\\begin\{bmatrix\}/.test(s)) {
+        s = `\\begin{bmatrix}\n${s}`;
+      }
+      // If it looks like an align block (contains & and \\) without explicit env, wrap with aligned
+      const hasEnvBegin = /\\begin\{[a-zA-Z*]+\}/.test(s);
+      const hasEnvEnd = /\\end\{[a-zA-Z*]+\}/.test(s);
+      if (!hasEnvBegin && !hasEnvEnd && /&/.test(s) && /\\\\/.test(s)) {
+        s = `\\begin{aligned}\n${s}\n\\end{aligned}`;
+      }
+      return `$$${s}$$`;
+    });
   return txt;
 }
 

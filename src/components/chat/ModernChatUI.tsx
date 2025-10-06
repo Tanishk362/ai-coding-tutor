@@ -531,6 +531,33 @@ function Typewriter({ content, onDone }: { content: string; onDone?: () => void 
     if (lastLeft !== -1 && lastLeft > lastRight) {
       out = out.slice(0, lastLeft);
     }
+    // 6) Incomplete \begin{...} ... \end{...} using a tiny stack parser.
+    // We scan tokens in order; any unmatched last \begin{env} likely indicates the user is still typing that block.
+    // Trim from that last unmatched begin to avoid flashing raw LaTeX.
+    const tokenRe = /\\begin\{([^}]+)\}|\\end\{([^}]+)\}/g;
+    const stack: Array<{ env: string; idx: number }> = [];
+    let m: RegExpExecArray | null;
+    while ((m = tokenRe.exec(out)) !== null) {
+      const idx = m.index ?? 0;
+      if (m[1]) {
+        // begin
+        stack.push({ env: m[1], idx });
+      } else if (m[2]) {
+        // end
+        const env = m[2];
+        // pop the nearest matching begin (handles minor mis-nesting from LLMs)
+        for (let i = stack.length - 1; i >= 0; i--) {
+          if (stack[i].env === env) {
+            stack.splice(i, 1);
+            break;
+          }
+        }
+      }
+    }
+    if (stack.length > 0) {
+      const lastUnmatched = stack[stack.length - 1];
+      out = out.slice(0, lastUnmatched.idx);
+    }
     return out;
   }
 
