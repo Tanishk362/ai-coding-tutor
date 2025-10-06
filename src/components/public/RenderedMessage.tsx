@@ -45,6 +45,10 @@ function hasMath(text: string): boolean {
 // Normalize various math notations into standard $inline$ or $$block$$ so remark-math catches them.
 function normalizeMath(raw: string): string {
   let txt = raw;
+  // Fix common LLM mistake: \left$ ... \right$ -> \left[ ... \right]
+  // Allow optional whitespace between command and '$'
+  txt = txt.replace(/\\left\s*\$/g, '\\left[');
+  txt = txt.replace(/\\right\s*\$/g, '\\right]');
   // Convert standalone \[ ... \] to $$ ... $$
   // Use [\s\S] instead of dot-all flag for broader TS target compatibility
   txt = txt.replace(/\\\[([\s\S]+?)\\\]/g, (_, inner) => `$$${inner.trim()}$$`);
@@ -68,7 +72,9 @@ export const RenderedMessage = React.memo(function RenderedMessage({ content, li
   }, [normalized]);
 
   const rehypePlugins = useMemo(() => {
-    return hasMath(normalized) ? [rehypeKatex] : [];
+    return hasMath(normalized)
+      ? [[rehypeKatex as any, { strict: false, throwOnError: false }]]
+      : [];
   }, [normalized]);
 
   const components = useMemo(() => ({

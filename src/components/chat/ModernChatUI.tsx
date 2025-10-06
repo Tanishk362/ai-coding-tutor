@@ -511,6 +511,12 @@ function Typewriter({ content }: { content: string }) {
     if (lastOpenBracket !== -1 && lastOpenBracket > lastCloseBracket) {
       out = out.slice(0, lastOpenBracket);
     }
+    // 5) Incomplete \left ... \right: if \left appears after the last \right, trim
+    const lastLeft = out.lastIndexOf('\\left');
+    const lastRight = out.lastIndexOf('\\right');
+    if (lastLeft !== -1 && lastLeft > lastRight) {
+      out = out.slice(0, lastLeft);
+    }
     return out;
   }
 
