@@ -4,7 +4,6 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
-import clipboardCopy from 'clipboard-copy';
 import 'katex/dist/katex.min.css';
 
 interface RenderedMessageProps {
@@ -61,15 +60,11 @@ function fixDisplayMathBlock(innerRaw: string): string {
   return `\n$$\n${s}\n$$\n`;
 }
 
-// Code block component with copy button styled similar to ChatGPT's
+// Simple code block renderer without copy UI
 function CodeBlock({ inline, className, children }: any) {
   const code = String(children).replace(/\n$/, '');
   const langMatch = /language-([a-z0-9]+)/i.exec(className || '');
-  const [copied, setCopied] = useState(false);
   const language = langMatch?.[1];
-  const handleCopy = async () => {
-    try { await clipboardCopy(code); setCopied(true); setTimeout(()=>setCopied(false),1500);} catch {}
-  };
   if (inline) {
     return <code className="px-1 py-0.5 rounded bg-neutral-800/60 text-[13px] font-mono">{children}</code>;
   }
@@ -77,9 +72,6 @@ function CodeBlock({ inline, className, children }: any) {
     <div className="group relative my-4 rounded-lg overflow-hidden border border-neutral-700 bg-neutral-900/70">
       <div className="flex items-center justify-between px-3 py-2 text-xs bg-neutral-800/70 border-b border-neutral-700 font-medium">
         <span className="text-neutral-300">{language || 'code'}</span>
-        <button type="button" onClick={handleCopy} className="opacity-80 hover:opacity-100 transition text-neutral-200 px-2 py-1 rounded bg-neutral-700/60">
-          {copied ? 'Copied' : 'Copy'}
-        </button>
       </div>
       <pre className="overflow-x-auto text-sm leading-relaxed p-4 font-mono"><code className={className}>{code}</code></pre>
     </div>
