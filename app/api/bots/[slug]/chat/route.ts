@@ -11,6 +11,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
     const { slug } = await ctx.params;
   const apiKey = process.env.OPENAI_API_KEY;
   const deepseekKey = process.env.DEEPSEEK_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
+  const openrouterPriority = String(process.env.OPENROUTER_PRIORITY || "").toLowerCase();
+  const priorityEnabled = openrouterKey && (openrouterPriority === "1" || openrouterPriority === "true");
     const body = await req.json().catch(() => ({}));
   let messages = Array.isArray(body?.messages) ? body.messages as Array<{ role: "user" | "assistant" | "system"; content: string }> : [];
   // Enforce a max rolling memory of 14 messages (excluding system) server-side for safety
@@ -21,8 +24,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
     if (!bot) return NextResponse.json({ error: "Bot not found" }, { status: 404 });
     if (isDeepSeekModel(bot.model)) {
       if (!deepseekKey) return NextResponse.json({ error: "Server missing DEEPSEEK_API_KEY." }, { status: 500 });
-    } else if (!apiKey) {
-      return NextResponse.json({ error: "Server missing OPENAI_API_KEY." }, { status: 500 });
+    } else if (!apiKey && !openrouterKey) {
+      return NextResponse.json({ error: "Server missing OPENAI_API_KEY or OPENROUTER_API_KEY." }, { status: 500 });
     }
 
     const system = buildSystemPrompt(bot);
@@ -127,13 +130,46 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
       const data = await res.json();
       reply = data?.choices?.[0]?.message?.content ?? "";
     } else {
-      const openai = new OpenAI({ apiKey });
-      const completion = await openai.chat.completions.create({
-        model: normalizeOpenAIModel(bot.model),
-        temperature: Number(bot.temperature ?? 0.6),
-        messages: finalMessages,
-      });
-      reply = completion.choices?.[0]?.message?.content ?? "";
+      // Helper: map local model name to OpenRouter schema if using OpenRouter
+      const toOpenRouterModel = (m?: string | null) => {
+        const name = (m || "gpt-4o-mini").trim();
+        if (/^gpt-/.test(name)) return `openai/${name}`;
+        return name; // assume already provider-qualified (e.g., anthropic/claude-3.5-sonnet)
+      };
+
+      if (priorityEnabled) {
+        // Route via OpenRouter with priority header
+        const model = toOpenRouterModel(bot.model || undefined);
+        const referer = process.env.NEXT_PUBLIC_APP_URL || req.headers.get("origin") || "https://github.com/Tanishk362/ai-coding-tutor";
+        const title = bot.name || "AI Chat";
+        const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${openrouterKey}`,
+            "HTTP-Referer": String(referer),
+            "X-Title": String(title),
+            "X-OpenRouter-Priority": "1",
+          },
+          body: JSON.stringify({
+            model,
+            messages: finalMessages,
+            temperature: Number(bot.temperature ?? 0.6),
+          }),
+        });
+        if (!orRes.ok) throw new Error(`OpenRouter error ${orRes.status}`);
+        const data = await orRes.json();
+        reply = data?.choices?.[0]?.message?.content ?? "";
+      } else {
+        // Default: direct OpenAI
+        const openai = new OpenAI({ apiKey });
+        const completion = await openai.chat.completions.create({
+          model: normalizeOpenAIModel(bot.model),
+          temperature: Number(bot.temperature ?? 0.6),
+          messages: finalMessages,
+        });
+        reply = completion.choices?.[0]?.message?.content ?? "";
+      }
     }
     // Conversations logging
     let convId = conversationId || null;
