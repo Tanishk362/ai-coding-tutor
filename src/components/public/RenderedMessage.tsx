@@ -86,6 +86,20 @@ function hasMath(text: string): boolean {
 // Normalize various math notations into standard $inline$ or $$block$$ so remark-math catches them.
 function normalizeMath(raw: string): string {
   let txt = raw;
+  // 0) Protect fenced code blocks and inline code from any math normalization
+  type CodeFenceEntry = { lang: string; body: string };
+  const codeFencePlaceholders: CodeFenceEntry[] = [];
+  txt = txt.replace(/```([^\n]*)\n([\s\S]*?)```/g, (_m, info, body) => {
+    const lang = String(info || '').trim().toLowerCase();
+    const entry: CodeFenceEntry = { lang, body: String(body ?? '') };
+    const i = codeFencePlaceholders.push(entry) - 1;
+    return `@@CODE_FENCE_${i}@@`;
+  });
+  const inlineCodePlaceholders: string[] = [];
+  txt = txt.replace(/`([^`]+?)`/g, (_m, inner) => {
+    const i = inlineCodePlaceholders.push(String(inner ?? '')) - 1;
+    return `@@INLINE_CODE_${i}@@`;
+  });
   // helper to balance unescaped braces in a math snippet
   const balanceBraces = (s: string): string => {
     let open = 0, close = 0;
@@ -111,11 +125,8 @@ function normalizeMath(raw: string): string {
     }
     return s;
   };
-  // Convert ```math|latex|tex fenced blocks to display math $$...$$ before markdown parsing
-  txt = txt.replace(/```\s*(math|latex|tex)\s*\n([\s\S]*?)```/gi, (_m, _lang, inner) => {
-    const body = String(inner ?? '').trim();
-    return body ? `$$\n${body}\n$$` : '';
-  });
+  // Note: fenced code blocks were masked; we will restore them at the end, converting
+  // only math/latex/tex fences to display math.
   // Convert \( ... \) inline delimiters to $ ... $
   txt = txt.replace(/\\\(([\s\S]+?)\\\)/g, (_m, inner) => `$${String(inner ?? '').trim()}$`);
   // Fix common LLM mistake: \left$ ... \right$ -> \left[ ... \right]
@@ -204,6 +215,20 @@ function normalizeMath(raw: string): string {
   }
     // Heuristics inside $$ ... $$ blocks to fix common LLM omissions
     txt = txt.replace(/\$\$([\s\S]*?)\$\$/g, (_m, inner) => fixDisplayMathBlock(String(inner ?? '')));
+  // 7) Restore fenced and inline code placeholders
+  txt = txt.replace(/@@CODE_FENCE_(\d+)@@/g, (_m, d) => {
+    const idx = Number(d);
+    const entry = codeFencePlaceholders[idx] || { lang: '', body: '' };
+    const lang = (entry.lang || '').toLowerCase();
+    const body = entry.body;
+    if (lang === 'math' || lang === 'latex' || lang === 'tex') {
+      return fixDisplayMathBlock(body);
+    }
+    // Restore as normal fenced code block
+    const header = entry.lang ? entry.lang + '\n' : '\n';
+    return '```' + header + body + '```';
+  });
+  txt = txt.replace(/@@INLINE_CODE_(\d+)@@/g, (_m, d) => '`' + (inlineCodePlaceholders[Number(d)] || '') + '`');
   return txt;
 }
 
