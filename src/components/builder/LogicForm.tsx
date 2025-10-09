@@ -14,6 +14,24 @@ export function LogicForm() {
         <label className="text-sm">Enable auto-suggested replies</label>
       </div>
 
+      <div className="space-y-2">
+        <div className="text-sm font-semibold">When no knowledge is found</div>
+        <select
+          className="bg-transparent border border-gray-700 rounded px-3 py-2 text-sm"
+          {...form.register("rules.settings.knowledge_fallback_mode" as const)}
+        >
+          <option value="ai">Generate an AI response without knowledge sources</option>
+          <option value="message">Show a custom message</option>
+        </select>
+        {form.watch("rules.settings.knowledge_fallback_mode") === "message" && (
+          <textarea
+            className="mt-2 w-full min-h-20 bg-transparent border border-gray-700 rounded px-3 py-2 text-sm"
+            placeholder="Enter the message to show when no relevant knowledge is found..."
+            {...form.register("rules.settings.knowledge_fallback_message" as const)}
+          />
+        )}
+      </div>
+
       <div className="flex items-center gap-3">
         <input type="checkbox" {...form.register("rules.settings.wait_for_reply")} />
         <label className="text-sm">Block second user message until assistant replies</label>

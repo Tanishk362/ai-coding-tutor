@@ -50,6 +50,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
     // Find latest user message as the query to ground on
     const latestUser = [...messages].reverse().find((m) => m.role === "user");
     let knowledgeSystemMessage: { role: "system"; content: string } | null = null;
+    let retrievalAttempted = false;
+    let retrievedCount = 0;
     if (latestUser && typeof latestUser.content === "string" && latestUser.content.trim()) {
       try {
         // We use OpenAI embeddings even if chatbot model is DeepSeek; skip retrieval if no OpenAI key.
@@ -82,10 +84,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
                 .sort((a, b) => (b.similarity! - a.similarity!))
                 .slice(0, 3);
               top = scored;
+              retrievalAttempted = true;
+              retrievedCount = top.length;
             }
           } catch (e) {
             // Swallow retrieval errors to keep chat working
             top = [];
+            retrievalAttempted = true;
+            retrievedCount = 0;
           }
 
           if (top.length) {
@@ -106,7 +112,60 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
       }
     }
 
-    let reply = "";
+    // Honor fallback setting when no knowledge is found
+    const settings: any = (bot as any)?.rules?.settings || {};
+    const fbMode: string | undefined = settings.knowledge_fallback_mode;
+    const fbMessage: string = String(settings.knowledge_fallback_message || "").trim();
+    const knowledgeBaseEmpty = !String(bot.knowledge_base || "").trim();
+    const noKnowledgeFound = retrievalAttempted ? (retrievedCount === 0) : knowledgeBaseEmpty;
+    if (fbMode === "message" && fbMessage && noKnowledgeFound) {
+      const reply = fbMessage;
+      // Conversations logging (same as normal path)
+      let convId = conversationId || null;
+      try {
+        // ensure conversation exists
+        if (!convId) {
+          const titleBase = messages.find((m) => m.role === "user")?.content || `${bot.name} chat`;
+          const title = (titleBase || "").slice(0, 60);
+          let ins = await supabaseServer.from("conversations").insert({ bot_id: bot.id, title }).select("id").single();
+          if (ins.error) {
+            // fallback with service role
+            const svc = supabaseService();
+            if (svc) {
+              const alt = await svc.from("conversations").insert({ bot_id: bot.id, title }).select("id").single();
+              if (!alt.error) ins = alt as any;
+            }
+          }
+          convId = (ins as any)?.data?.id || null;
+        }
+        if (convId) {
+          const lastUser = messages[messages.length - 1];
+          if (lastUser && lastUser.role === "user") {
+            let mu = await supabaseServer.from("messages").insert({ conversation_id: convId, role: "user", content: lastUser.content });
+            if (mu.error) {
+              const svc = supabaseService();
+              if (svc) await svc.from("messages").insert({ conversation_id: convId, role: "user", content: lastUser.content });
+            }
+          }
+          let ma = await supabaseServer.from("messages").insert({ conversation_id: convId, role: "assistant", content: reply });
+          if (ma.error) {
+            const svc = supabaseService();
+            if (svc) await svc.from("messages").insert({ conversation_id: convId, role: "assistant", content: reply });
+          }
+          // bump conversations.updated_at for ordering
+          const upd = await supabaseServer.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId);
+          if (upd.error) {
+            const svc = supabaseService();
+            if (svc) await svc.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId);
+          }
+        }
+      } catch (logErr) {
+        console.warn("Conversation logging failed", logErr);
+      }
+      return NextResponse.json({ reply, conversationId: convId ?? null });
+    }
+
+  let reply = "";
     const finalMessages = [
       { role: "system", content: system },
       ...(knowledgeSystemMessage ? [knowledgeSystemMessage] : []),
