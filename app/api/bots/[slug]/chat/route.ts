@@ -112,13 +112,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
       }
     }
 
-    // Honor fallback setting when no knowledge is found
-    const settings: any = (bot as any)?.rules?.settings || {};
-    const fbMode: string | undefined = settings.knowledge_fallback_mode;
-    const fbMessage: string = String(settings.knowledge_fallback_message || "").trim();
-    const knowledgeBaseEmpty = !String(bot.knowledge_base || "").trim();
-    const noKnowledgeFound = retrievalAttempted ? (retrievedCount === 0) : knowledgeBaseEmpty;
-    if (fbMode === "message" && fbMessage && noKnowledgeFound) {
+  // Honor fallback setting when no knowledge is used (no knowledgeSystemMessage present)
+  const settings: any = (bot as any)?.rules?.settings || {};
+  const fbMode: string | undefined = settings.knowledge_fallback_mode;
+  const fbMessage: string = String(settings.knowledge_fallback_message || "").trim();
+  const noKnowledgeFound = !knowledgeSystemMessage; // if we didn't attach KB context, treat as no knowledge
+  if (fbMode === "message" && fbMessage && noKnowledgeFound) {
       const reply = fbMessage;
       // Conversations logging (same as normal path)
       let convId = conversationId || null;
