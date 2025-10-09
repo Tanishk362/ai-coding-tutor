@@ -18,6 +18,7 @@ export type PreviewProps = {
   knowledgeBase?: string | null;
   model?: string;
   temperature?: number;
+  rules?: { settings?: { knowledge_fallback_mode?: "ai" | "message"; knowledge_fallback_message?: string } };
 };
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -35,6 +36,7 @@ export function ChatPreview({
   knowledgeBase,
   model,
   temperature,
+  rules,
 }: PreviewProps) {
   const [messages, setMessages] = useState<Msg[]>([
     { role: "assistant", content: greeting || "How can I help you today?" },
@@ -71,6 +73,7 @@ export function ChatPreview({
             knowledge_base: knowledgeBase || undefined,
             model,
             temperature,
+            rules,
           },
           messages: [...messages, { role: "user", content }],
         }),

@@ -8,11 +8,29 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY;
   const deepseekKey = process.env.DEEPSEEK_API_KEY;
     const { bot, messages } = (await req.json()) as {
-      bot: { name: string; directive?: string; knowledge_base?: string; model?: string; temperature?: number };
+      bot: {
+        name: string;
+        directive?: string;
+        knowledge_base?: string;
+        model?: string;
+        temperature?: number;
+        // Pass-through of builder rules for preview-only behavior
+        rules?: { settings?: { knowledge_fallback_mode?: "ai" | "message"; knowledge_fallback_message?: string } };
+      };
       messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
     };
     if (!bot?.name || !Array.isArray(messages)) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
+
+    // Preview-only fallback: if builder setting says to show a custom message when no knowledge is found,
+    // and there is no knowledge_base provided, return that message immediately (skip model call).
+    const settings = bot?.rules?.settings || {};
+    const fbMode = settings?.knowledge_fallback_mode as undefined | "ai" | "message";
+    const fbMessage = String(settings?.knowledge_fallback_message || "").trim();
+    const noKnowledgeFound = !bot?.knowledge_base || !String(bot.knowledge_base).trim();
+    if (fbMode === "message" && fbMessage && noKnowledgeFound) {
+      return NextResponse.json({ reply: fbMessage });
     }
     const system = buildSystemPrompt({
       name: bot.name,
