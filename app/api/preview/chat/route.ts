@@ -22,6 +22,12 @@ export async function POST(req: NextRequest) {
     if (!bot?.name || !Array.isArray(messages)) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
+    // Strip data-URI images from message content to avoid large payloads
+    const sanitize = (s: string) =>
+      String(s || "")
+        .replace(/!\[[^\]]*\]\(\s*data:image\/[a-zA-Z+.-]+;base64,[^)]+\)/g, "[image attached]")
+        .replace(/data:image\/[a-zA-Z+.-]+;base64,[A-Za-z0-9+/=]+/g, "[image]");
+    const safeMessages = messages.map(m => ({ ...m, content: sanitize(m.content) }));
 
     // Preview-only fallback: if builder setting says to show a custom message when no knowledge is found,
     // and there is no knowledge_base provided, return that message immediately (skip model call).
@@ -48,7 +54,7 @@ export async function POST(req: NextRequest) {
       const res = await fetch("https://api.deepseek.com/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${deepseekKey}` },
-        body: JSON.stringify({ model, temperature: Number(bot.temperature ?? 0.6), messages: [{ role: "system", content: system }, ...messages] }),
+        body: JSON.stringify({ model, temperature: Number(bot.temperature ?? 0.6), messages: [{ role: "system", content: system }, ...safeMessages] }),
       });
       if (!res.ok) throw new Error(`DeepSeek error ${res.status}`);
       const data = await res.json();
@@ -59,7 +65,7 @@ export async function POST(req: NextRequest) {
       const completion = await openai.chat.completions.create({
         model: normalizeOpenAIModel(bot.model),
         temperature: Number(bot.temperature ?? 0.6),
-        messages: [{ role: "system", content: system }, ...messages],
+        messages: [{ role: "system", content: system }, ...safeMessages],
       });
       const reply = completion.choices?.[0]?.message?.content ?? "";
       return NextResponse.json({ reply });

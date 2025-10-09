@@ -366,7 +366,6 @@ export default function ModernChatUI({
               radius={radius}
               typing={typingIndicator && loading && i === messages.length - 1}
               animate={m.role === 'assistant' && i === animateIndex}
-              onDone={() => setAnimateIndex(null)}
             />
           ))}
           {typingIndicator && loading && (
@@ -426,7 +425,6 @@ function ChatBubble({
   radius,
   typing,
   animate,
-  onDone,
 }: {
   role: "user" | "assistant";
   content: string;
@@ -434,7 +432,6 @@ function ChatBubble({
   radius: string;
   typing?: boolean;
   animate?: boolean;
-  onDone?: () => void;
 }) {
   const isUser = role === "user";
 
@@ -449,7 +446,7 @@ function ChatBubble({
         {isUser ? (
           <RenderedMessage content={content} light={true} />
         ) : animate ? (
-          <Typewriter content={content} onDone={onDone} />
+          <Typewriter content={content} />
         ) : (
           <RenderedMessage content={content} light={true} />
         )}
@@ -458,7 +455,7 @@ function ChatBubble({
   );
 }
 
-function Typewriter({ content, onDone }: { content: string; onDone?: () => void }) {
+function Typewriter({ content }: { content: string }) {
   // Animate characters one-by-one; when done, switch to full markdown+math rendering
   const [done, setDone] = useState(false);
   const [index, setIndex] = useState(0);
@@ -474,7 +471,6 @@ function Typewriter({ content, onDone }: { content: string; onDone?: () => void 
         if (i + 1 >= total) {
           clearInterval(id);
           setDone(true);
-          try { onDone && onDone(); } catch {}
           return total;
         }
         return i + 1;

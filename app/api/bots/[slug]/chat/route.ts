@@ -16,6 +16,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
   const priorityEnabled = openrouterKey && (openrouterPriority === "1" || openrouterPriority === "true");
     const body = await req.json().catch(() => ({}));
   let messages = Array.isArray(body?.messages) ? body.messages as Array<{ role: "user" | "assistant" | "system"; content: string }> : [];
+  // Sanitize possible data-URI images to keep payloads small and supported
+  const sanitize = (s: string) =>
+    String(s || "")
+      .replace(/!\[[^\]]*\]\(\s*data:image\/[a-zA-Z+.-]+;base64,[^)]+\)/g, "[image attached]")
+      .replace(/data:image\/[a-zA-Z+.-]+;base64,[A-Za-z0-9+/=]+/g, "[image]");
+  messages = messages.map(m => ({ ...m, content: sanitize(m.content) }));
   // Enforce a max rolling memory of 14 messages (excluding system) server-side for safety
   if (messages.length > 14) messages = messages.slice(-14);
     const conversationId = typeof body?.conversationId === "string" ? body.conversationId : undefined;

@@ -58,6 +58,16 @@ export function ChatPreview({
     setInput("");
     // If there's an attached image, embed as markdown inline with the text (preview-only)
     const content = imagePreview ? `${text ? text + "\n\n" : ""}![uploaded image](${imagePreview})` : text;
+    // For the model request, strip data-URI images to avoid huge payloads or unsupported inputs
+    const sanitizeForLLM = (s: string) => {
+      let t = s;
+      // Replace data URI images with a small placeholder
+      t = t.replace(/!\[[^\]]*\]\(\s*data:image\/[a-zA-Z+.-]+;base64,[^)]+\)/g, "[image attached]");
+      // Also scrub any stray data URIs
+      t = t.replace(/data:image\/[a-zA-Z+.-]+;base64,[A-Za-z0-9+/=]+/g, "[image]");
+      return t;
+    };
+    const llmContent = sanitizeForLLM(content);
     setMessages((m) => [...m, { role: "user", content }]);
     setImagePreview(null);
     if (fileRef.current) fileRef.current.value = "";
@@ -75,7 +85,7 @@ export function ChatPreview({
             temperature,
             rules,
           },
-          messages: [...messages, { role: "user", content }],
+          messages: [...messages.map(m => ({ ...m, content: sanitizeForLLM(m.content) })), { role: "user", content: llmContent }],
         }),
       });
       const data = await res.json();
