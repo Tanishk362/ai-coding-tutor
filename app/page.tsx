@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Bot,
@@ -16,24 +17,69 @@ import {
   Quote,
 } from "lucide-react";
 
+function MagneticButton({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) {
+  const ref = useRef<HTMLAnchorElement | null>(null);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const dx = (e.clientX - cx) / 10;
+    const dy = (e.clientY - cy) / 10;
+    const clamp = (v: number, m = 10) => Math.max(-m, Math.min(m, v));
+    setPos({ x: clamp(dx), y: clamp(dy) });
+  };
+  const reset = () => setPos({ x: 0, y: 0 });
+  return (
+    <div onMouseMove={onMove} onMouseLeave={reset} className="relative inline-block">
+      <Link ref={ref as any} href={href} className={className} style={{ transform: `translate3d(${pos.x}px, ${pos.y}px, 0)` }}>
+        <span className="pointer-events-none absolute inset-0 -z-10 shimmer animate-shimmer rounded-full" />
+        {children}
+      </Link>
+    </div>
+  );
+}
+
 export default function Landing() {
+  // Parallax state for hero accents
+  const [mouse, setMouse] = useState({ x: 0.5, y: 0.5 });
+  const onHeroMove = (e: React.MouseEvent<HTMLElement>) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width;
+    const y = (e.clientY - r.top) / r.height;
+    setMouse({ x, y });
+  };
+  const onHeroLeave = () => setMouse({ x: 0.5, y: 0.5 });
   return (
     <main className="min-h-screen">
       {/* Hero: deep navy gradient with glow */}
       <section
         aria-labelledby="hero-title"
         className="relative overflow-hidden text-white"
+        onMouseMove={onHeroMove}
+        onMouseLeave={onHeroLeave}
       >
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(1200px_600px_at_50%_-10%,rgba(59,130,246,0.15),transparent_60%)]" />
         <div className="absolute inset-0 -z-20 bg-gradient-to-b from-[#0B1220] via-[#0A0F1A] to-[#05070B]" />
         {/* animated gradient ribbon */}
         <div className="pointer-events-none absolute inset-x-0 top-[-30%] -z-10 h-[60vh] opacity-60 [mask-image:radial-gradient(60%_60%_at_50%_40%,#000_40%,transparent_70%)]">
-          <div className="mx-auto h-full w-[140%] -rotate-6 bg-[linear-gradient(90deg,rgba(59,130,246,0.3),rgba(147,51,234,0.25),rgba(16,185,129,0.25))] animate-gradient-x" />
+          <div
+            className="mx-auto h-full w-[140%] -rotate-6 bg-[linear-gradient(90deg,rgba(59,130,246,0.3),rgba(147,51,234,0.25),rgba(16,185,129,0.25))] animate-gradient-x"
+            style={{ transform: `translate3d(${(0.5 - mouse.x) * 30}px, ${(0.5 - mouse.y) * 10}px, 0) rotate(-6deg)` }}
+          />
         </div>
         {/* floating shapes */}
         <div className="pointer-events-none absolute inset-0 -z-10">
-          <div className="absolute left-[-6rem] top-[-6rem] h-72 w-72 rounded-full bg-blue-600/20 blur-3xl animate-pulse-glow" />
-          <div className="absolute bottom-[-5rem] right-[-4rem] h-80 w-80 rounded-full bg-indigo-500/20 blur-3xl animate-pulse-glow" />
+          <div
+            className="absolute left-[-6rem] top-[-6rem] h-72 w-72 rounded-full bg-blue-600/20 blur-3xl animate-pulse-glow"
+            style={{ transform: `translate3d(${(mouse.x - 0.5) * 20}px, ${(mouse.y - 0.5) * 20}px, 0)` }}
+          />
+          <div
+            className="absolute bottom-[-5rem] right-[-4rem] h-80 w-80 rounded-full bg-indigo-500/20 blur-3xl animate-pulse-glow"
+            style={{ transform: `translate3d(${(mouse.x - 0.5) * -20}px, ${(mouse.y - 0.5) * -10}px, 0)` }}
+          />
         </div>
 
         <div className="mx-auto max-w-7xl px-6 py-20 md:py-28">
@@ -69,15 +115,13 @@ export default function Landing() {
               {/* CTAs */}
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <motion.div initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.4, delay: 0.1 }}>
-                  <Link
+                  <MagneticButton
                     href="/admin/chatbots"
                     className="group relative inline-flex items-center justify-center rounded-full bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-blue-600 hover:bg-blue-500"
-                    aria-label="Add and customize chatbot"
                   >
-                    {/* glow ring */}
                     <span className="absolute inset-0 -z-10 rounded-full bg-blue-600/60 blur-md transition-opacity duration-300 group-hover:opacity-80" />
                     Add & Customize Chatbot
-                  </Link>
+                  </MagneticButton>
                 </motion.div>
                 <motion.a
                   href="#features"
@@ -259,13 +303,13 @@ export default function Landing() {
               Launch in minutes. No coding required.
             </p>
             <div className="mt-6">
-              <Link
+              <MagneticButton
                 href="/admin/chatbots"
                 className="group relative inline-flex items-center justify-center rounded-full bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-blue-600 hover:bg-blue-500"
               >
                 <span className="absolute inset-0 -z-10 rounded-full bg-blue-600/60 blur-md transition-opacity duration-300 group-hover:opacity-80" />
                 Add & Customize Chatbot
-              </Link>
+              </MagneticButton>
             </div>
           </motion.div>
         </div>
