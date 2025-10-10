@@ -1,0 +1,10 @@
+# Minimal deps for the FastAPI voice worker
+# You will also need system ffmpeg installed for decoding webm/opus
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+websockets==12.0
+numpy==2.3.1
+av==12.3.0
+aiohttp==3.10.10
+
+soundfile
