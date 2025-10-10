@@ -4,13 +4,13 @@ This directory contains a Zapier-like Admin Panel for building chatbots with liv
 
 ## Install
 
-1. From `ai-coding-tutor`:
+1. From `ai-coding-tutor-main`:
 
 ```
 npm install
 ```
 
-2. Set env vars in `.env`:
+2. Set env vars in `.env.local`:
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=...
@@ -20,10 +20,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ## Run
 
 ```
-npm run dev -- -p 3010
+npm run dev
 ```
 
-Open http://localhost:3010/admin/chatbots
+Open http://localhost:4010/admin/chatbots
 
 ## Apply Supabase schema
 
@@ -95,6 +95,7 @@ Seed a bot:
 curl -X POST -H 'content-type: application/json' \
   -d '{"slug":"demo","name":"Demo Bot","is_public":true}' \
   http://localhost:4010/api/dev/ensure-chatbot
+```
 
 ## Deploy (Vercel via GitHub Actions)
 
