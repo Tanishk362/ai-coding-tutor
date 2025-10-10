@@ -513,14 +513,17 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
             return (
             <div key={i} className={`flex gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
               {!isUser && (
-                <div className={`shrink-0 w-8 h-8 rounded-full grid place-items-center text-white text-xs font-bold shadow-lg ${
-                  isAdminManual
-                    ? "bg-gradient-to-br from-amber-400 via-yellow-500 to-orange-500 shadow-amber-500/50 ring-2 ring-amber-400/30 animate-pulse"
-                    : light
-                    ? "bg-gradient-to-br from-sky-500 via-blue-500 to-indigo-600 shadow-sky-500/40"
-                    : "bg-gradient-to-br from-cyan-500 via-sky-500 to-blue-600 shadow-sky-500/50"
-                }`}>
-                  {isAdminManual ? "👑" : "AI"}
+                <div className="flex flex-col items-start mr-1.5">
+                  <div className={`shrink-0 w-7 h-7 rounded-full grid place-items-center shadow-sm ${
+                    isAdminManual
+                      ? "bg-gradient-to-br from-indigo-500 to-indigo-700 ring-1 ring-indigo-300/40"
+                      : light
+                      ? "bg-gradient-to-br from-indigo-400 to-indigo-600"
+                      : "bg-gradient-to-br from-indigo-500 to-indigo-700"
+                  }`} />
+                  <div className={`mt-1 max-w-[120px] truncate text-[9px] ${light ? 'text-slate-600' : 'text-slate-300'}`}>
+                    {isAdminManual ? 'Instructor' : name}
+                  </div>
                 </div>
               )}
               <div
@@ -529,24 +532,23 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
                     ? "text-white"
                     : isAdminManual
                     ? light
-                      ? "relative bg-gradient-to-br from-amber-50 to-yellow-50 text-amber-950 border-2 border-amber-300/60 shadow-[0_0_20px_rgba(251,191,36,0.3),0_0_40px_rgba(251,191,36,0.15)] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-r before:from-amber-200/30 before:to-yellow-200/30 before:opacity-60"
-                      : "relative bg-gradient-to-br from-amber-950/50 via-yellow-950/40 to-orange-950/50 text-amber-50 border-2 border-amber-500/40 shadow-[0_0_20px_rgba(251,191,36,0.3),0_0_40px_rgba(251,191,36,0.15),inset_0_1px_0_rgba(251,191,36,0.2)] backdrop-blur-sm"
+                      ? "relative bg-white text-slate-900 border border-indigo-200 shadow-[0_2px_8px_rgba(79,70,229,0.08)] before:absolute before:inset-0 before:rounded-2xl before:pointer-events-none before:bg-[radial-gradient(ellipse_at_top,_rgba(99,102,241,0.06),transparent_60%)]"
+                      : "relative bg-[#16161a] text-slate-100 border border-indigo-700/40 shadow-[0_2px_8px_rgba(79,70,229,0.15)]"
                     : light
-                    ? "relative bg-gradient-to-br from-white to-sky-50 text-gray-800 border border-sky-200/60 shadow-[0_0_15px_rgba(14,165,233,0.12),0_2px_8px_rgba(0,0,0,0.05)] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-br before:from-sky-100/30 before:to-cyan-100/30 before:opacity-0 hover:before:opacity-100 before:transition-opacity before:pointer-events-none"
-                    : "relative bg-gradient-to-br from-[#1a1a1a] via-[#1f1f2e] to-[#1a1a2a] text-gray-100 border border-sky-500/20 shadow-[0_0_15px_rgba(14,165,233,0.15),0_1px_0_rgba(255,255,255,0.08)_inset] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-r before:from-sky-500/10 before:to-indigo-500/10 before:opacity-0 hover:before:opacity-100 before:transition-opacity before:pointer-events-none"
+                    ? "relative bg-white text-slate-800 border border-indigo-200/50 shadow-[0_2px_8px_rgba(79,70,229,0.06)] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-br before:from-indigo-50 before:to-slate-50"
+                    : "relative bg-[#1a1a22] text-slate-100 border border-indigo-700/30 shadow-[0_2px_8px_rgba(79,70,229,0.12)] before:absolute before:inset-0 before:rounded-2xl before:bg-[linear-gradient(135deg,rgba(79,70,229,0.06),transparent)]"
                 }`}
                 style={{ background: isUser ? brandColor : undefined }}
               >
                 <div className="relative z-10">
                   <RenderedMessage content={displayContent} light={light} />
                   {isAdminManual && (
-                    <div className={`mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-semibold shadow-sm ${
+                    <div className={`mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium ${
                       light
-                        ? "bg-gradient-to-r from-amber-400/20 to-yellow-400/20 border border-amber-400/50 text-amber-700"
-                        : "bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-400/40 text-amber-200"
+                        ? "bg-indigo-50 border border-indigo-200 text-indigo-700"
+                        : "bg-indigo-900/30 border border-indigo-700/40 text-indigo-200"
                     }`}>
-                      <span className="animate-pulse">✨</span>
-                      <span>Admin Message</span>
+                      Instructor Message
                     </div>
                   )}
                 </div>

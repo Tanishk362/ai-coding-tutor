@@ -84,12 +84,16 @@ export default function ConversationDetailPage() {
                 <div key={m.id} className={`flex items-end gap-2 sm:gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
                   {/* Avatar */}
                   {!isUser && (
-                    <div className={`shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full grid place-items-center text-white text-[12px] sm:text-[13px] font-semibold shadow-lg ${
-                      isAdminManual 
-                        ? "bg-gradient-to-br from-amber-400 via-yellow-500 to-orange-500 shadow-amber-500/50 ring-2 ring-amber-400/30 animate-pulse" 
-                        : "bg-gradient-to-br from-sky-500 to-indigo-600 shadow-indigo-500/40"
-                    }`}>
-                      {isAdminManual ? "👑" : "AI"}
+                    <div className="mr-2 flex flex-col items-start">
+                      <div className={`shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full grid place-items-center shadow ${
+                        isAdminManual
+                          ? "bg-gradient-to-br from-indigo-500 to-indigo-700 ring-1 ring-indigo-300/40"
+                          : "bg-gradient-to-br from-slate-600 to-slate-700"
+                      }`} />
+                      <div className="mt-1 max-w-[160px] truncate text-[10px] font-medium text-neutral-300/90">
+                        {/* Name - generic in admin view */}
+                        Instructor
+                      </div>
                     </div>
                   )}
 
@@ -100,16 +104,14 @@ export default function ConversationDetailPage() {
                         isUser
                           ? "rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 bg-gradient-to-br from-sky-600 to-indigo-600 text-white shadow-lg shadow-indigo-900/30"
                           : isAdminManual
-                          ? "relative rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 bg-gradient-to-br from-amber-950/40 via-yellow-950/30 to-orange-950/40 border-2 border-amber-500/30 text-amber-50 shadow-[0_0_20px_rgba(251,191,36,0.3),0_0_40px_rgba(251,191,36,0.15),inset_0_1px_0_rgba(251,191,36,0.2)] backdrop-blur-sm"
-                          : "relative rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 bg-gradient-to-br from-neutral-900/90 via-neutral-900/80 to-neutral-800/90 border border-sky-500/20 text-neutral-100 shadow-[0_0_15px_rgba(14,165,233,0.15),0_1px_0_rgba(255,255,255,0.08)_inset] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-r before:from-sky-500/10 before:to-indigo-500/10 before:opacity-0 hover:before:opacity-100 before:transition-opacity before:pointer-events-none"
+                          ? "relative rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 bg-white border border-indigo-200 text-slate-900 shadow-[0_2px_8px_rgba(79,70,229,0.08)]"
+                          : "relative rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 bg-neutral-900/80 border border-neutral-800 text-neutral-100"
                       }
                     >
                       <RenderedMessage content={displayContent} light={false} />
                       {isAdminManual && (
-                        <div className="mt-2 flex items-center gap-2 text-[10px] text-amber-200">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-400/40 shadow-[0_0_10px_rgba(251,191,36,0.3)] font-semibold">
-                            <span className="animate-pulse">✨</span> Admin Message
-                          </span>
+                        <div className="mt-2 flex items-center gap-2 text-[10px] text-indigo-800">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200">Instructor Message</span>
                           <button
                             className="underline underline-offset-2 hover:text-amber-100 transition"
                             onClick={async () => {
@@ -138,7 +140,7 @@ export default function ConversationDetailPage() {
                         </div>
                       )}
                     </div>
-                    <div className={`mt-1 text-[10px] sm:text-[11px] ${isUser ? "text-sky-300/70 text-right" : isAdminManual ? "text-amber-400/60" : "text-neutral-400"}`}>{time}</div>
+                    <div className={`mt-1 text-[10px] sm:text-[11px] ${isUser ? "text-sky-300/70 text-right" : isAdminManual ? "text-amber-700/70" : "text-neutral-400"}`}>{time}</div>
                   </div>
 
                   {isUser && (
