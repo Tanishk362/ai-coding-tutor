@@ -54,6 +54,9 @@ export default function ModernChatUI({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Ephemeral: which message index should animate (assistant only). Not persisted.
   const [animateIndex, setAnimateIndex] = useState<number | null>(null);
+  // Image attachment (live chat)
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const radius = bubbleStyle === "square" ? "rounded-md" : "rounded-2xl";
 
@@ -89,19 +92,23 @@ export default function ModernChatUI({
   async function send() {
     if (loading) return;
     const text = input.trim();
-    if (!text) return;
+    if (!text && !imagePreview) return;
     setInput("");
+    const content = imagePreview ? `${text ? text + "\n\n" : ""}![uploaded image](${imagePreview})` : text;
     const cidBefore = await ensureConversation();
     setMessages((m) => {
-      const updated: Msg[] = [...m, { role: "user", content: text }];
+      const updated: Msg[] = [...m, { role: "user", content }];
       const id = activeCid || cidBefore;
       if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
       return updated;
     });
+    // reset local image state after queuing message
+    setImagePreview(null);
+    if (fileRef.current) fileRef.current.value = "";
     setLoading(true);
     try {
       const history = messages.slice(-13);
-      const payload = [...history, { role: "user", content: text }];
+      const payload = [...history, { role: "user", content }];
       const res = await fetch(`/api/bots/${encodeURIComponent(slug)}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -119,7 +126,7 @@ export default function ModernChatUI({
       if (!cidBefore && data?.conversationId) {
         const newId: string = data.conversationId;
         setActiveCid(newId);
-        const autoTitle = (text || 'New Chat').slice(0, 60);
+        const autoTitle = ((text || (imagePreview ? 'Image message' : '') || 'New Chat')).slice(0, 60);
         setChatName(autoTitle);
         setConvs((prev) => [{ id: newId, title: autoTitle, updated_at: new Date().toISOString() }, ...prev]);
       }
@@ -158,11 +165,15 @@ export default function ModernChatUI({
         const rows = await listPublicConversations(slug, { pageSize: 50 });
         const byId: Record<string, { id: string; title: string; updated_at: string }> = {};
         for (const r of rows as any) byId[r.id] = r;
-        for (const c of cachedConvs) if (!byId[c.id]) byId[c.id] = c;
-        const merged = Object.values(byId).sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+        // Only merge cached conversations that look like UUIDs to avoid server 500s on load
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        for (const c of cachedConvs) if (!byId[c.id] && uuidRe.test(c.id)) byId[c.id] = c;
+        const merged = Object.values(byId)
+          .filter((c) => uuidRe.test(c.id))
+          .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
         setConvs(merged as any);
         const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
-        if (saved && (merged as any).find((r: any) => r.id === saved)) {
+        if (saved && uuidRe.test(saved) && (merged as any).find((r: any) => r.id === saved)) {
           setActiveCid(saved);
         } else if (merged.length) {
           setActiveCid(merged[0].id);
@@ -402,6 +413,27 @@ export default function ModernChatUI({
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
               />
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const reader = new FileReader();
+                  reader.onload = () => setImagePreview(reader.result as string);
+                  reader.readAsDataURL(f);
+                }}
+              />
+              <button
+                type="button"
+                aria-label="Attach image"
+                onClick={() => fileRef.current?.click()}
+                className="px-3 py-2.5 rounded-2xl border border-sky-200 text-sky-700 bg-white hover:bg-sky-50"
+              >
+                📷
+              </button>
               <button
                 onClick={() => !loading && send()}
                 disabled={loading}
@@ -411,6 +443,15 @@ export default function ModernChatUI({
                 {loading ? "Sending…" : "Send"}
               </button>
             </div>
+            {imagePreview && (
+              <div className="mt-2 flex items-center gap-3 text-sm">
+                <img src={imagePreview} alt="preview" className="h-14 w-14 object-cover rounded border border-sky-200" />
+                <div className="flex gap-2">
+                  <button type="button" className="px-2 py-1 rounded border border-sky-200" onClick={() => send()}>Attach</button>
+                  <button type="button" className="px-2 py-1 rounded border border-sky-200" onClick={() => { setImagePreview(null); if (fileRef.current) fileRef.current.value = ""; }}>Cancel</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

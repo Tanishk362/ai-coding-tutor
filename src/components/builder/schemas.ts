@@ -21,6 +21,7 @@ export const logicSchema = z.object({
         wait_for_reply: z.boolean().default(false),
         knowledge_fallback_mode: z.enum(["ai", "message"]).default("ai"),
         knowledge_fallback_message: z.string().default(""),
+        allow_image_plus_text: z.boolean().default(true),
       }).partial().default({}),
       kv: z
         .array(
@@ -28,7 +29,7 @@ export const logicSchema = z.object({
         )
         .default([]),
     })
-  .default({ settings: { auto_suggest: true, wait_for_reply: false, knowledge_fallback_mode: "ai", knowledge_fallback_message: "" }, kv: [] }),
+  .default({ settings: { auto_suggest: true, wait_for_reply: false, knowledge_fallback_mode: "ai", knowledge_fallback_message: "", allow_image_plus_text: true }, kv: [] }),
 });
 
 export const themeSchema = z.object({

@@ -14,6 +14,11 @@ export function LogicForm() {
         <label className="text-sm">Enable auto-suggested replies</label>
       </div>
 
+      <div className="flex items-center gap-3">
+        <input type="checkbox" {...form.register("rules.settings.allow_image_plus_text")} />
+        <label className="text-sm">Allow sending image and text together</label>
+      </div>
+
       <div className="space-y-2">
         <div className="text-sm font-semibold">When no knowledge is found</div>
         <select
