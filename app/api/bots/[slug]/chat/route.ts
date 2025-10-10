@@ -16,12 +16,23 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
   const priorityEnabled = openrouterKey && (openrouterPriority === "1" || openrouterPriority === "true");
     const body = await req.json().catch(() => ({}));
   let messages = Array.isArray(body?.messages) ? body.messages as Array<{ role: "user" | "assistant" | "system"; content: string }> : [];
-  // Sanitize possible data-URI images to keep payloads small and supported
-  const sanitize = (s: string) =>
-    String(s || "")
-      .replace(/!\[[^\]]*\]\(\s*data:image\/[a-zA-Z+.-]+;base64,[^)]+\)/g, "[image attached]")
-      .replace(/data:image\/[a-zA-Z+.-]+;base64,[A-Za-z0-9+/=]+/g, "[image]");
-  messages = messages.map(m => ({ ...m, content: sanitize(m.content) }));
+  // Support images: extract from last user message
+  function extractTextAndImages(markdown: string) {
+    const images: string[] = [];
+    let text = String(markdown || "");
+    text = text.replace(/!\[[^\]]*?\]\((.*?)\)/g, (_m, url) => {
+      const u = String(url || "").trim();
+      if (u) images.push(u);
+      return "";
+    });
+    const dataUriRe = /(data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+)(?![A-Za-z0-9+/=])/gi;
+    text = text.replace(dataUriRe, (u) => {
+      images.push(u);
+      return "";
+    });
+    text = text.replace(/\n{3,}/g, "\n\n").trim();
+    return { text, images };
+  }
   // Enforce a max rolling memory of 14 messages (excluding system) server-side for safety
   if (messages.length > 14) messages = messages.slice(-14);
     const conversationId = typeof body?.conversationId === "string" ? body.conversationId : undefined;
@@ -171,11 +182,29 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
     }
 
   let reply = "";
+    // Build final messages; if the last user message contains images, send as multi-part content
+    const last = messages[messages.length - 1];
+    let visionParts: any[] | null = null;
+    if (last?.role === "user") {
+      const { text, images } = extractTextAndImages(last.content || "");
+      if (images.length > 0) {
+        visionParts = [
+          { type: "text", text: text || "Please analyze the attached image(s) and answer the question." },
+          ...images.slice(0, 3).map((url) => ({ type: "image_url", image_url: { url, detail: "auto" as const } })),
+        ];
+      }
+    }
+
     const finalMessages = [
       { role: "system", content: system },
       ...(knowledgeSystemMessage ? [knowledgeSystemMessage] : []),
-      ...messages,
-    ] as Array<{ role: "system" | "user" | "assistant"; content: string }>;
+      ...messages.map((m, idx) => {
+        if (idx === messages.length - 1 && m.role === "user" && visionParts) {
+          return { role: "user", content: visionParts } as any;
+        }
+        return { role: m.role, content: m.content } as any;
+      }),
+    ] as Array<{ role: "system" | "user" | "assistant"; content: any }>;
     if (isDeepSeekModel(bot.model)) {
       const model = bot.model || "deepseek-reasoner";
       const res = await fetch("https://api.deepseek.com/chat/completions", {
@@ -203,7 +232,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
 
       if (priorityEnabled) {
         // Route via OpenRouter with priority header
-        const model = toOpenRouterModel(bot.model || undefined);
+        // If images are present, require a vision-capable model; prefer openai/gpt-4o-mini
+        const model = visionParts ? "openai/gpt-4o-mini" : toOpenRouterModel(bot.model || undefined);
         const referer = process.env.NEXT_PUBLIC_APP_URL || req.headers.get("origin") || "https://github.com/Tanishk362/ai-coding-tutor";
         const title = bot.name || "AI Chat";
         const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -228,7 +258,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
         // Default: direct OpenAI
         const openai = new OpenAI({ apiKey });
         const completion = await openai.chat.completions.create({
-          model: normalizeOpenAIModel(bot.model),
+          model: visionParts ? "gpt-4o-mini" : normalizeOpenAIModel(bot.model),
           temperature: Number(bot.temperature ?? 0.6),
           messages: finalMessages,
         });
