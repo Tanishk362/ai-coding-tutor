@@ -504,22 +504,45 @@ function ChatBubble({
   animate?: boolean;
 }) {
   const isUser = role === "user";
+  const isAdminManual = !isUser && typeof content === "string" && content.startsWith("<!--admin_manual-->");
+  const displayContent = isAdminManual ? content.replace(/^<!--admin_manual-->\n?/, "") : content;
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+      {!isUser && (
+        <div className={`shrink-0 w-8 h-8 rounded-full mr-2 grid place-items-center text-white text-xs font-bold shadow-lg ${
+          isAdminManual
+            ? "bg-gradient-to-br from-amber-400 via-yellow-500 to-orange-500 shadow-amber-500/50 ring-2 ring-amber-400/30 animate-pulse"
+            : "bg-gradient-to-br from-cyan-500 via-sky-500 to-blue-600 shadow-sky-500/40"
+        }`}>
+          {isAdminManual ? "👑" : "AI"}
+        </div>
+      )}
       <div
         className={`max-w-[82%] md:max-w-[70%] px-4 py-3 ${radius} text-[15px] leading-7 shadow-sm ${
-          isUser ? "text-white" : "text-gray-800"
+          isUser 
+            ? "text-white" 
+            : isAdminManual 
+            ? "relative bg-gradient-to-br from-amber-50 to-yellow-50 text-amber-950 border-2 border-amber-300/50 shadow-[0_0_20px_rgba(251,191,36,0.25),0_0_40px_rgba(251,191,36,0.12)] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-r before:from-amber-200/20 before:to-yellow-200/20 before:opacity-50"
+            : "relative bg-gradient-to-br from-white to-sky-50 text-gray-800 border border-sky-200/60 shadow-[0_0_15px_rgba(14,165,233,0.12),0_2px_8px_rgba(0,0,0,0.05)] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-br before:from-sky-100/30 before:to-cyan-100/30 before:opacity-0 hover:before:opacity-100 before:transition-opacity before:pointer-events-none"
         }`}
-        style={{ background: isUser ? brandColor : "#ffffff" }}
+        style={{ background: isUser ? brandColor : undefined }}
       >
-        {isUser ? (
-          <RenderedMessage content={content} light={true} />
-        ) : animate ? (
-          <Typewriter content={content} />
-        ) : (
-          <RenderedMessage content={content} light={true} />
-        )}
+        <div className="relative z-10">
+          {isUser ? (
+            <RenderedMessage content={displayContent} light={true} />
+          ) : animate ? (
+            <Typewriter content={displayContent} />
+          ) : (
+            <RenderedMessage content={displayContent} light={true} />
+          )}
+          {isAdminManual && (
+            <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-gradient-to-r from-amber-400/20 to-yellow-400/20 border border-amber-400/40 text-[11px] font-semibold text-amber-700 shadow-sm">
+              <span className="animate-pulse">✨</span>
+              <span>Admin Message</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

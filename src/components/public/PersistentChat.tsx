@@ -505,33 +505,71 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
 
         {/* Messages */}
   <div className={`flex-1 overflow-y-auto p-3 md:p-6 space-y-3 ${bgPanel}`}>
-          {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+          {messages.map((m, i) => {
+            const isUser = m.role === "user";
+            const isAdminManual = !isUser && typeof m.content === "string" && m.content.startsWith("<!--admin_manual-->");
+            const displayContent = isAdminManual ? m.content.replace(/^<!--admin_manual-->\n?/, "") : m.content;
+            
+            return (
+            <div key={i} className={`flex gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
+              {!isUser && (
+                <div className={`shrink-0 w-8 h-8 rounded-full grid place-items-center text-white text-xs font-bold shadow-lg ${
+                  isAdminManual
+                    ? "bg-gradient-to-br from-amber-400 via-yellow-500 to-orange-500 shadow-amber-500/50 ring-2 ring-amber-400/30 animate-pulse"
+                    : light
+                    ? "bg-gradient-to-br from-sky-500 via-blue-500 to-indigo-600 shadow-sky-500/40"
+                    : "bg-gradient-to-br from-cyan-500 via-sky-500 to-blue-600 shadow-sky-500/50"
+                }`}>
+                  {isAdminManual ? "👑" : "AI"}
+                </div>
+              )}
               <div
-                className={`max-w-[90%] sm:max-w-[85%] md:max-w-[80%] px-4 py-3 text-sm md:text-base ${radius} shadow-sm`}
-                style={{ background: m.role === "user" ? brandColor : bubbleBotBg, color: m.role === "user" ? bubbleUserText : bubbleBotText }}
+                className={`max-w-[90%] sm:max-w-[85%] md:max-w-[80%] px-4 py-3 text-sm md:text-base ${radius} shadow-sm ${
+                  isUser
+                    ? "text-white"
+                    : isAdminManual
+                    ? light
+                      ? "relative bg-gradient-to-br from-amber-50 to-yellow-50 text-amber-950 border-2 border-amber-300/60 shadow-[0_0_20px_rgba(251,191,36,0.3),0_0_40px_rgba(251,191,36,0.15)] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-r before:from-amber-200/30 before:to-yellow-200/30 before:opacity-60"
+                      : "relative bg-gradient-to-br from-amber-950/50 via-yellow-950/40 to-orange-950/50 text-amber-50 border-2 border-amber-500/40 shadow-[0_0_20px_rgba(251,191,36,0.3),0_0_40px_rgba(251,191,36,0.15),inset_0_1px_0_rgba(251,191,36,0.2)] backdrop-blur-sm"
+                    : light
+                    ? "relative bg-gradient-to-br from-white to-sky-50 text-gray-800 border border-sky-200/60 shadow-[0_0_15px_rgba(14,165,233,0.12),0_2px_8px_rgba(0,0,0,0.05)] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-br before:from-sky-100/30 before:to-cyan-100/30 before:opacity-0 hover:before:opacity-100 before:transition-opacity before:pointer-events-none"
+                    : "relative bg-gradient-to-br from-[#1a1a1a] via-[#1f1f2e] to-[#1a1a2a] text-gray-100 border border-sky-500/20 shadow-[0_0_15px_rgba(14,165,233,0.15),0_1px_0_rgba(255,255,255,0.08)_inset] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-r before:from-sky-500/10 before:to-indigo-500/10 before:opacity-0 hover:before:opacity-100 before:transition-opacity before:pointer-events-none"
+                }`}
+                style={{ background: isUser ? brandColor : undefined }}
               >
-                <RenderedMessage content={m.content} light={light} />
-                {m.role === "assistant" && shouldShowActionButtons(m.content) && (
-                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] md:text-xs">
+                <div className="relative z-10">
+                  <RenderedMessage content={displayContent} light={light} />
+                  {isAdminManual && (
+                    <div className={`mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-semibold shadow-sm ${
+                      light
+                        ? "bg-gradient-to-r from-amber-400/20 to-yellow-400/20 border border-amber-400/50 text-amber-700"
+                        : "bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-400/40 text-amber-200"
+                    }`}>
+                      <span className="animate-pulse">✨</span>
+                      <span>Admin Message</span>
+                    </div>
+                  )}
+                </div>
+                {m.role === "assistant" && !isAdminManual && shouldShowActionButtons(displayContent) && (
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] md:text-xs relative z-10">
                     <button
                       type="button"
                       className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
-                      onClick={() => !loading && sendText(`Explain: ${m.content}`)}
+                      onClick={() => !loading && sendText(`Explain: ${displayContent}`)}
                     >
                       Explain
                     </button>
                     <button
                       type="button"
                       className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
-                      onClick={() => !loading && sendText(`Show steps for: ${m.content}`)}
+                      onClick={() => !loading && sendText(`Show steps for: ${displayContent}`)}
                     >
                       Show Steps
                     </button>
                     <button
                       type="button"
                       className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
-                      onClick={() => !loading && sendText(`Give me a similar problem to practice based on: ${m.content}`)}
+                      onClick={() => !loading && sendText(`Give me a similar problem to practice based on: ${displayContent}`)}
                     >
                       Try Similar Problem
                     </button>
@@ -539,7 +577,8 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
                 )}
               </div>
             </div>
-          ))}
+          );
+          })}
           {typingIndicator && loading && (
             <div className="flex">
               <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${borderInput} ${light ? 'bg-white/60' : 'bg-white/5'} shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]`}>
