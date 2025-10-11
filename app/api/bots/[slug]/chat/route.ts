@@ -78,9 +78,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
 
     // Find latest user message as the query to ground on
     const latestUser = [...messages].reverse().find((m) => m.role === "user");
-    let knowledgeSystemMessage: { role: "system"; content: string } | null = null;
-    let retrievalAttempted = false;
-    let retrievedCount = 0;
+  let knowledgeSystemMessage: { role: "system"; content: string } | null = null;
+  let retrievalAttempted = false;
+  let retrievedCount = 0;
     if (latestUser && typeof latestUser.content === "string" && latestUser.content.trim()) {
       try {
         // We use OpenAI embeddings even if chatbot model is DeepSeek; skip retrieval if no OpenAI key.
@@ -145,7 +145,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
   const settings: any = (bot as any)?.rules?.settings || {};
   const fbMode: string | undefined = settings.knowledge_fallback_mode;
   const fbMessage: string = String(settings.knowledge_fallback_message || "").trim();
-  const noKnowledgeFound = !knowledgeSystemMessage; // if we didn't attach KB context, treat as no knowledge
+  // Decide "no knowledge" as follows:
+  // - If retrieval attempted: true when zero chunks were selected.
+  // - If retrieval NOT attempted (e.g., no knowledge_chunks table):
+  //     * If bot.knowledge_base empty => no knowledge.
+  //     * Else, use a lightweight token-overlap heuristic between the latest user text and knowledge_base.
+  let noKnowledgeFound = false;
+  if (retrievalAttempted) {
+    noKnowledgeFound = retrievedCount === 0;
+  } else {
+    const kb = String((bot as any)?.knowledge_base || "");
+    const kbLower = kb.toLowerCase();
+    if (!kbLower) {
+      noKnowledgeFound = true;
+    } else if (latestUser && typeof latestUser.content === 'string') {
+      const { text } = extractTextAndImages(latestUser.content);
+      const tokens = String(text || "")
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((t) => t.length >= 4)
+        .slice(0, 20);
+      const hasOverlap = tokens.some((t) => kbLower.includes(t));
+      noKnowledgeFound = !hasOverlap;
+    } else {
+      noKnowledgeFound = true;
+    }
+  }
   if (fbMode === "message" && fbMessage && noKnowledgeFound) {
       const reply = fbMessage;
       // Conversations logging (same as normal path)
