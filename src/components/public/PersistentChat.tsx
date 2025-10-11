@@ -505,73 +505,33 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
 
         {/* Messages */}
   <div className={`flex-1 overflow-y-auto p-3 md:p-6 space-y-3 ${bgPanel}`}>
-          {messages.map((m, i) => {
-            const isUser = m.role === "user";
-            const isAdminManual = !isUser && typeof m.content === "string" && m.content.startsWith("<!--admin_manual-->");
-            const displayContent = isAdminManual ? m.content.replace(/^<!--admin_manual-->\n?/, "") : m.content;
-            
-            return (
-            <div key={i} className={`flex gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
-              {!isUser && (
-                <div className="flex flex-col items-start mr-1.5">
-                  <div className={`shrink-0 w-7 h-7 rounded-full grid place-items-center shadow-sm ${
-                    isAdminManual
-                      ? "bg-gradient-to-br from-indigo-500 to-indigo-700 ring-1 ring-indigo-300/40"
-                      : light
-                      ? "bg-gradient-to-br from-indigo-400 to-indigo-600"
-                      : "bg-gradient-to-br from-indigo-500 to-indigo-700"
-                  }`} />
-                  <div className={`mt-1 max-w-[120px] truncate text-[9px] ${light ? 'text-slate-600' : 'text-slate-300'}`}>
-                    {isAdminManual ? 'Instructor' : name}
-                  </div>
-                </div>
-              )}
+          {messages.map((m, i) => (
+            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[90%] sm:max-w-[85%] md:max-w-[80%] px-4 py-3 text-sm md:text-base ${radius} shadow-sm ${
-                  isUser
-                    ? "text-white"
-                    : isAdminManual
-                    ? light
-                      ? "relative bg-white text-slate-900 border border-indigo-200 shadow-[0_2px_8px_rgba(79,70,229,0.08)] before:absolute before:inset-0 before:rounded-2xl before:pointer-events-none before:bg-[radial-gradient(ellipse_at_top,_rgba(99,102,241,0.06),transparent_60%)]"
-                      : "relative bg-[#16161a] text-slate-100 border border-indigo-700/40 shadow-[0_2px_8px_rgba(79,70,229,0.15)]"
-                    : light
-                    ? "relative bg-white text-slate-800 border border-indigo-200/50 shadow-[0_2px_8px_rgba(79,70,229,0.06)] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-br before:from-indigo-50 before:to-slate-50"
-                    : "relative bg-[#1a1a22] text-slate-100 border border-indigo-700/30 shadow-[0_2px_8px_rgba(79,70,229,0.12)] before:absolute before:inset-0 before:rounded-2xl before:bg-[linear-gradient(135deg,rgba(79,70,229,0.06),transparent)]"
-                }`}
-                style={{ background: isUser ? brandColor : undefined }}
+                className={`max-w-[90%] sm:max-w-[85%] md:max-w-[80%] px-4 py-3 text-sm md:text-base ${radius} shadow-sm`}
+                style={{ background: m.role === "user" ? brandColor : bubbleBotBg, color: m.role === "user" ? bubbleUserText : bubbleBotText }}
               >
-                <div className="relative z-10">
-                  <RenderedMessage content={displayContent} light={light} />
-                  {isAdminManual && (
-                    <div className={`mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium ${
-                      light
-                        ? "bg-indigo-50 border border-indigo-200 text-indigo-700"
-                        : "bg-indigo-900/30 border border-indigo-700/40 text-indigo-200"
-                    }`}>
-                      Instructor Message
-                    </div>
-                  )}
-                </div>
-                {m.role === "assistant" && !isAdminManual && shouldShowActionButtons(displayContent) && (
-                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] md:text-xs relative z-10">
+                <RenderedMessage content={m.content} light={light} />
+                {m.role === "assistant" && shouldShowActionButtons(m.content) && (
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] md:text-xs">
                     <button
                       type="button"
                       className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
-                      onClick={() => !loading && sendText(`Explain: ${displayContent}`)}
+                      onClick={() => !loading && sendText(`Explain: ${m.content}`)}
                     >
                       Explain
                     </button>
                     <button
                       type="button"
                       className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
-                      onClick={() => !loading && sendText(`Show steps for: ${displayContent}`)}
+                      onClick={() => !loading && sendText(`Show steps for: ${m.content}`)}
                     >
                       Show Steps
                     </button>
                     <button
                       type="button"
                       className={`px-2 py-1 rounded border ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
-                      onClick={() => !loading && sendText(`Give me a similar problem to practice based on: ${displayContent}`)}
+                      onClick={() => !loading && sendText(`Give me a similar problem to practice based on: ${m.content}`)}
                     >
                       Try Similar Problem
                     </button>
@@ -579,8 +539,7 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
                 )}
               </div>
             </div>
-          );
-          })}
+          ))}
           {typingIndicator && loading && (
             <div className="flex">
               <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${borderInput} ${light ? 'bg-white/60' : 'bg-white/5'} shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]`}>

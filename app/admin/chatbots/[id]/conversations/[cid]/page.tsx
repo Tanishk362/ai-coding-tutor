@@ -84,16 +84,8 @@ export default function ConversationDetailPage() {
                 <div key={m.id} className={`flex items-end gap-2 sm:gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
                   {/* Avatar */}
                   {!isUser && (
-                    <div className="mr-2 flex flex-col items-start">
-                      <div className={`shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full grid place-items-center shadow ${
-                        isAdminManual
-                          ? "bg-gradient-to-br from-indigo-500 to-indigo-700 ring-1 ring-indigo-300/40"
-                          : "bg-gradient-to-br from-slate-600 to-slate-700"
-                      }`} />
-                      <div className="mt-1 max-w-[160px] truncate text-[10px] font-medium text-neutral-300/90">
-                        {/* Name - generic in admin view */}
-                        Instructor
-                      </div>
+                    <div className="shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 grid place-items-center text-white text-[12px] sm:text-[13px] font-semibold shadow-sm">
+                      AI
                     </div>
                   )}
 
@@ -103,17 +95,15 @@ export default function ConversationDetailPage() {
                       className={
                         isUser
                           ? "rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 bg-gradient-to-br from-sky-600 to-indigo-600 text-white shadow-lg shadow-indigo-900/30"
-                          : isAdminManual
-                          ? "relative rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 bg-white border border-indigo-200 text-slate-900 shadow-[0_2px_8px_rgba(79,70,229,0.08)]"
-                          : "relative rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 bg-neutral-900/80 border border-neutral-800 text-neutral-100"
+                          : "rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 bg-neutral-900/80 border border-neutral-800 text-neutral-100 shadow-[0_1px_0_rgba(255,255,255,0.05)_inset]"
                       }
                     >
                       <RenderedMessage content={displayContent} light={false} />
                       {isAdminManual && (
-                        <div className="mt-2 flex items-center gap-2 text-[10px] text-indigo-800">
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200">Instructor Message</span>
+                        <div className="mt-2 flex items-center gap-2 text-[10px] text-amber-300/80">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-900/30 border border-amber-800/50">Admin</span>
                           <button
-                            className="underline underline-offset-2 hover:text-amber-100 transition"
+                            className="underline underline-offset-2 hover:text-amber-200"
                             onClick={async () => {
                               const next = prompt("Edit admin message:", displayContent);
                               if (next == null) return;
@@ -126,7 +116,7 @@ export default function ConversationDetailPage() {
                             }}
                           >Edit</button>
                           <button
-                            className="underline underline-offset-2 hover:text-amber-100 transition"
+                            className="underline underline-offset-2 hover:text-amber-200"
                             onClick={async () => {
                               if (!confirm("Delete this admin message?")) return;
                               try {
@@ -140,7 +130,7 @@ export default function ConversationDetailPage() {
                         </div>
                       )}
                     </div>
-                    <div className={`mt-1 text-[10px] sm:text-[11px] ${isUser ? "text-sky-300/70 text-right" : isAdminManual ? "text-amber-700/70" : "text-neutral-400"}`}>{time}</div>
+                    <div className={`mt-1 text-[10px] sm:text-[11px] ${isUser ? "text-sky-300/70 text-right" : "text-neutral-400"}`}>{time}</div>
                   </div>
 
                   {isUser && (
