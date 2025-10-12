@@ -49,14 +49,15 @@ async function ensureOwnerByMessage(db: any, mid: string, userId: string) {
   return { status: 200, msg } as const;
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { mid: string } }) {
+// Next.js 15: context params are provided as a Promise
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ mid: string }> }) {
   try {
+    const { mid } = await ctx.params;
     const userId = await getAuthedUser(req);
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const db = supabaseService();
     if (!db) return NextResponse.json({ error: "Server not configured" }, { status: 500 });
 
-    const mid = Array.isArray(params?.mid) ? params.mid[0] : params.mid;
     const body = await req.json().catch(() => null);
     let content = String(body?.content || "").trim();
     if (!content) return NextResponse.json({ error: "Content required" }, { status: 400 });
@@ -83,14 +84,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { mid: strin
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { mid: string } }) {
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ mid: string }> }) {
   try {
+    const { mid } = await ctx.params;
     const userId = await getAuthedUser(req);
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const db = supabaseService();
     if (!db) return NextResponse.json({ error: "Server not configured" }, { status: 500 });
 
-    const mid = Array.isArray(params?.mid) ? params.mid[0] : params.mid;
     const ownerCheck = await ensureOwnerByMessage(db, mid, userId);
     if (ownerCheck.status !== 200) return NextResponse.json({ error: ownerCheck.error }, { status: ownerCheck.status });
 
