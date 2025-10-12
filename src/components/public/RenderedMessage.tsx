@@ -249,39 +249,10 @@ export const RenderedMessage = React.memo(function RenderedMessage({ content, li
 
   const components = useMemo(() => ({
     code: CodeBlock,
-    img: ({ node, ...props }: any) => {
-      const src = String(props.src || '');
-      if (!src) return null;
-      // Only allow safe schemes for inline images
-      const allowed = /^(data:image\/(png|jpe?g|gif|webp|bmp|svg\+xml);base64,|blob:|https?:)/i.test(src);
-      if (!allowed) {
-        // Fallback: render a link so the user can open it
-        return (
-          <a href={src} target="_blank" rel="noopener noreferrer" className="text-sky-400 underline">
-            {props.alt || 'image'}
-          </a>
-        );
-      }
-      const alt = props.alt || 'image';
-      return (
-        <span className="block my-2">
-          <img
-            src={src}
-            alt={alt}
-            loading="lazy"
-            decoding="async"
-            referrerPolicy="no-referrer"
-            className="max-w-full h-auto rounded-md border border-neutral-200 dark:border-neutral-700 shadow-sm"
-            onError={(e) => {
-              // Hide broken images to avoid layout glitches
-              (e.currentTarget as HTMLImageElement).style.display = 'none';
-            }}
-          />
-          {alt && alt !== 'image' && (
-            <span className="mt-1 block text-xs text-neutral-500">{alt}</span>
-          )}
-        </span>
-      );
+    img: ({node, ...props}: any) => {
+      // Avoid React 19 warning for empty src; skip rendering if empty
+      if (!props.src) return null;
+      return <img {...props} alt={props.alt || 'image'} />;
     },
     p: ({node, ...props}: any) => <p className="mb-3" {...props} />,
     ul: ({node, ...props}: any) => <ul className="mb-3 list-disc list-inside space-y-1" {...props} />,

@@ -81,6 +81,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
   let knowledgeSystemMessage: { role: "system"; content: string } | null = null;
   let retrievalAttempted = false;
   let retrievedCount = 0;
+  let totalChunksInDB = 0; // Track total chunks available
     if (latestUser && typeof latestUser.content === "string" && latestUser.content.trim()) {
       try {
         // We use OpenAI embeddings even if chatbot model is DeepSeek; skip retrieval if no OpenAI key.
@@ -102,7 +103,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
               .select("id, chunk_text, file_name, embedding")
               .eq("chatbot_id", bot.id)
               .limit(1000);
+            retrievalAttempted = true; // Mark that we attempted retrieval
             if (!error && Array.isArray(rows)) {
+              totalChunksInDB = rows.length; // Track how many chunks exist in DB
               const scored = rows
                 .map((r: any) => {
                   const vec: number[] = Array.isArray(r.embedding)
@@ -110,17 +113,22 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
                     : Array.from(r.embedding as unknown as Iterable<number>);
                   return { id: r.id, chunk_text: r.chunk_text, file_name: r.file_name, similarity: cosineSimilarity(qvec, vec) };
                 })
-                .sort((a, b) => (b.similarity! - a.similarity!))
-                .slice(0, 3);
-              top = scored;
-              retrievalAttempted = true;
-              retrievedCount = top.length;
+                .sort((a, b) => (b.similarity! - a.similarity!));
+              // Use a minimum similarity threshold to determine if knowledge is "found"
+              const MIN_SIMILARITY = 0.3; // Adjust this threshold as needed
+              const relevant = scored.filter(s => s.similarity! >= MIN_SIMILARITY).slice(0, 3);
+              top = relevant;
+              retrievedCount = relevant.length;
+            } else {
+              totalChunksInDB = 0;
+              retrievedCount = 0;
             }
           } catch (e) {
             // Swallow retrieval errors to keep chat working
             top = [];
             retrievalAttempted = true;
             retrievedCount = 0;
+            totalChunksInDB = 0;
           }
 
           if (top.length) {
@@ -141,36 +149,30 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
       }
     }
 
-  // Honor fallback setting when no knowledge is used (no knowledgeSystemMessage present)
+  // Honor fallback setting when no knowledge is found
   const settings: any = (bot as any)?.rules?.settings || {};
   const fbMode: string | undefined = settings.knowledge_fallback_mode;
   const fbMessage: string = String(settings.knowledge_fallback_message || "").trim();
-  // Decide "no knowledge" as follows:
-  // - If retrieval attempted: true when zero chunks were selected.
-  // - If retrieval NOT attempted (e.g., no knowledge_chunks table):
-  //     * If bot.knowledge_base empty => no knowledge.
-  //     * Else, use a lightweight token-overlap heuristic between the latest user text and knowledge_base.
-  let noKnowledgeFound = false;
-  if (retrievalAttempted) {
-    noKnowledgeFound = retrievedCount === 0;
-  } else {
-    const kb = String((bot as any)?.knowledge_base || "");
-    const kbLower = kb.toLowerCase();
-    if (!kbLower) {
-      noKnowledgeFound = true;
-    } else if (latestUser && typeof latestUser.content === 'string') {
-      const { text } = extractTextAndImages(latestUser.content);
-      const tokens = String(text || "")
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        .filter((t) => t.length >= 4)
-        .slice(0, 20);
-      const hasOverlap = tokens.some((t) => kbLower.includes(t));
-      noKnowledgeFound = !hasOverlap;
-    } else {
-      noKnowledgeFound = true;
-    }
-  }
+  
+  // Debug logging (can be removed in production)
+  console.log('[Knowledge Check]', {
+    botId: bot.id,
+    botName: bot.name,
+    fbMode,
+    fbMessage: fbMessage ? `"${fbMessage.substring(0, 30)}..."` : '(empty)',
+    retrievalAttempted,
+    retrievedCount,
+    totalChunksInDB,
+    hasKnowledgeMessage: !!knowledgeSystemMessage,
+  });
+  
+  // Determine if "no knowledge" condition is met:
+  // 1. If retrieval was attempted and zero relevant chunks were found
+  // 2. OR if there are no chunks in the database at all for this bot
+  const noKnowledgeFound = retrievalAttempted && (retrievedCount === 0 || totalChunksInDB === 0);
+  
+  console.log('[Knowledge Decision]', { noKnowledgeFound, willShowCustomMessage: fbMode === "message" && !!fbMessage && noKnowledgeFound });
+  
   if (fbMode === "message" && fbMessage && noKnowledgeFound) {
       const reply = fbMessage;
       // Conversations logging (same as normal path)

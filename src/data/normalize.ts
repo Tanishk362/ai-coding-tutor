@@ -24,8 +24,14 @@ export function normalizeChatbotPatch(p: any) {
         delete out.notion;
       }
     }
-    if (Array.isArray(p.rules)) {
-      out.rules = p.rules;
+    // Handle rules - can be an array (legacy) or object (new structure with settings)
+    if (p.rules !== undefined) {
+      if (Array.isArray(p.rules)) {
+        out.rules = p.rules;
+      } else if (typeof p.rules === 'object' && p.rules !== null) {
+        // New structure: { settings: {...}, kv: [...] }
+        out.rules = p.rules;
+      }
     }
   }
   return out;

@@ -54,31 +54,12 @@ export async function POST(req: NextRequest) {
       return { text, images };
     }
 
-  // Preview-only fallback: if builder setting says to show a custom message when no knowledge is found,
-  // decide "no knowledge found" via a lightweight heuristic on the last user query vs knowledge_base.
+  // Preview-only fallback: if builder setting is "Show a custom message", always return it
+  // (preview UX prefers deterministic behavior without retrieval/model calls).
     const settings = bot?.rules?.settings || {};
     const fbMode = settings?.knowledge_fallback_mode as undefined | "ai" | "message";
     const fbMessage = String(settings?.knowledge_fallback_message || "").trim();
-
-    // Heuristic: if knowledge_base is empty, it's definitely "no knowledge found".
-    // Otherwise, check if the last user text shares any token (length >= 4) with the knowledge_base.
-    // If no overlap, treat as "no knowledge found" for preview purposes.
-    const kb = String(bot?.knowledge_base || "");
-    const kbLower = kb.toLowerCase();
-    const lastMsg = cleanedMessages[cleanedMessages.length - 1];
-    let queryText = "";
-    if (lastMsg?.role === "user") {
-      const { text } = extractTextAndImages(String(lastMsg.content || ""));
-      queryText = text;
-    }
-    const tokens = queryText
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((t) => t.length >= 4)
-      .slice(0, 20);
-    const hasOverlap = kbLower && tokens.some((t) => kbLower.includes(t));
-    const noKnowledgeFound = !kbLower || !hasOverlap;
-    if (fbMode === "message" && fbMessage && noKnowledgeFound) {
+    if (fbMode === "message" && fbMessage) {
       return NextResponse.json({ reply: fbMessage });
     }
     const system = buildSystemPrompt({
