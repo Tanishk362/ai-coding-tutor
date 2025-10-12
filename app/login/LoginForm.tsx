@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/src/lib/supabase";
-import { sendOtpFirebase, currentIdToken } from "@/src/lib/firebase";
+import { sendOtpFirebase, currentIdToken, ensureRecaptcha } from "@/src/lib/firebase";
 
 type Mode = "email" | "phone";
 
@@ -24,6 +24,13 @@ export default function LoginForm({ fallbackNext }: { fallbackNext: string }) {
 
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Render visible reCAPTCHA when Phone tab is active
+  useEffect(() => {
+    if (mode !== "phone") return;
+    ensureRecaptcha("recaptcha-container", { visible: true, size: "normal", theme: "dark" })
+      .catch(() => {});
+  }, [mode]);
 
   useEffect(() => {
     (async () => {
@@ -63,8 +70,8 @@ export default function LoginForm({ fallbackNext }: { fallbackNext: string }) {
     if (!phone) return;
     setLoading(true); setMsg(null);
     try {
-      // Trigger Firebase OTP (uses invisible reCAPTCHA)
-      const conf = await sendOtpFirebase(phone, "recaptcha-container");
+  // Trigger Firebase OTP with VISIBLE reCAPTCHA so users can see and interact if needed
+  const conf = await sendOtpFirebase(phone, "recaptcha-container", { visible: true, size: "normal", theme: "dark" });
       // Store confirmation in window to reuse on verify (keeps code small)
       (window as any).__fbConf = conf;
       setOtpSent(true); setResendIn(30); setMsg("OTP sent via SMS.");
@@ -131,7 +138,7 @@ export default function LoginForm({ fallbackNext }: { fallbackNext: string }) {
         </>
       ) : (
         <>
-          <div id="recaptcha-container" />
+          <div id="recaptcha-container" className="mb-3" />
           <form className="space-y-3" onSubmit={otpSent ? verifySms : sendSms}>
             <div>
               <label className="block text-sm mb-1">Phone</label>

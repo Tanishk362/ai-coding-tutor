@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/src/lib/supabase";
-import { sendOtpFirebase, currentIdToken } from "@/src/lib/firebase";
+import { sendOtpFirebase, currentIdToken, ensureRecaptcha } from "@/src/lib/firebase";
 
 type Mode = "email" | "phone";
 
@@ -22,6 +22,13 @@ export default function SignupForm({ fallbackNext }: { fallbackNext: string }) {
 
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Render visible reCAPTCHA when Phone tab is active
+  useEffect(() => {
+    if (mode !== "phone") return;
+    ensureRecaptcha("recaptcha-container", { visible: true, size: "normal", theme: "dark" })
+      .catch(() => {});
+  }, [mode]);
 
   async function signUp(e: React.FormEvent) {
     e.preventDefault();
@@ -42,7 +49,7 @@ export default function SignupForm({ fallbackNext }: { fallbackNext: string }) {
     if (!phone) return;
     setLoading(true); setMsg(null);
     try {
-      const conf = await sendOtpFirebase(phone, "recaptcha-container");
+  const conf = await sendOtpFirebase(phone, "recaptcha-container", { visible: true, size: "normal", theme: "dark" });
       (window as any).__fbConf = conf;
       setOtpSent(true); setResendIn(30); setMsg("OTP sent via SMS.");
     } catch (err: any) {
@@ -99,7 +106,7 @@ export default function SignupForm({ fallbackNext }: { fallbackNext: string }) {
         </form>
       ) : (
         <form className="space-y-3" onSubmit={otpSent ? verifySms : sendSms}>
-          <div id="recaptcha-container" />
+          <div id="recaptcha-container" className="mb-3" />
           <div>
             <label className="block text-sm mb-1">Phone</label>
             <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded bg-black/40 border border-white/10 px-3 py-2 outline-none" placeholder="+91XXXXXXXXXX" />
