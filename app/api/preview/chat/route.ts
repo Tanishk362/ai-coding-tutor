@@ -22,6 +22,15 @@ export async function POST(req: NextRequest) {
     if (!bot?.name || !Array.isArray(messages)) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
+
+    // Clean up message history: strip base64 images from older messages to reduce token usage
+    const cleanedMessages = messages.map((msg, idx) => {
+      if (msg.role === "user" && idx < messages.length - 1 && typeof msg.content === "string") {
+        const cleaned = msg.content.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '[image removed]');
+        return { ...msg, content: cleaned };
+      }
+      return msg;
+    });
     // Extract images from the last user message to support vision prompts
     function extractTextAndImages(markdown: string) {
       const images: string[] = [];
@@ -57,13 +66,13 @@ export async function POST(req: NextRequest) {
       knowledge_base: bot.knowledge_base,
     });
     if (!bot?.model && !apiKey) {
-      const last = messages[messages.length - 1]?.content || "";
+  const last = cleanedMessages[cleanedMessages.length - 1]?.content || "";
       const reply = `🧪 Mock preview reply (no OPENAI_API_KEY). Bot: ${bot.name}\nUser: ${last}`;
       return NextResponse.json({ reply });
     }
 
     // Prepare messages; if last user message contains images, build multi-part content for vision
-    const last = messages[messages.length - 1];
+  const last = cleanedMessages[cleanedMessages.length - 1];
     let visionParts: any[] | null = null;
     if (last?.role === "user") {
       const { text, images } = extractTextAndImages(last.content || "");
@@ -74,8 +83,8 @@ export async function POST(req: NextRequest) {
         ];
       }
     }
-    const finalMessages = messages.map((m, idx) => {
-      if (idx === messages.length - 1 && m.role === "user" && visionParts) {
+    const finalMessages = cleanedMessages.map((m, idx) => {
+      if (idx === cleanedMessages.length - 1 && m.role === "user" && visionParts) {
         return { role: "user", content: visionParts } as any;
       }
       return { role: m.role, content: m.content } as any;

@@ -57,6 +57,8 @@ export default function ModernChatUI({
   // Image attachment (live chat)
   const fileRef = useRef<HTMLInputElement>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  // Track whether we are currently streaming a reply to avoid Typewriter re-init loops
+  const [streaming, setStreaming] = useState(false);
 
   const radius = bubbleStyle === "square" ? "rounded-md" : "rounded-2xl";
 
@@ -69,8 +71,8 @@ export default function ModernChatUI({
   async function ensureConversation(): Promise<string | null> {
     if (activeCid) return activeCid;
     try {
-      const now = new Date();
-      const titleSuggestion = chatName || `Chat on ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      // Always start with a neutral title; we'll auto-rename after first user message
+      const titleSuggestion = 'New Chat';
       const resp = await fetch(`/api/bots/${encodeURIComponent(slug)}/conversations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -94,6 +96,7 @@ export default function ModernChatUI({
     const text = input.trim();
     if (!text && !imagePreview) return;
     setInput("");
+    const hadImage = Boolean(imagePreview);
     const content = imagePreview ? `${text ? text + "\n\n" : ""}![uploaded image](${imagePreview})` : text;
     const cidBefore = await ensureConversation();
     setMessages((m) => {
@@ -114,21 +117,81 @@ export default function ModernChatUI({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: payload, conversationId: cidBefore ?? undefined }),
       });
-      const data = await res.json();
-      const reply = res.ok ? (data.reply || "") : (data.error || "Sorry, I couldn’t respond.");
-      setMessages((m) => {
-        const updated: Msg[] = [...m, { role: "assistant", content: reply }];
-        setAnimateIndex(updated.length - 1);
-        const id = activeCid || cidBefore || data?.conversationId;
-        if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
-        return updated;
-      });
-      if (!cidBefore && data?.conversationId) {
-        const newId: string = data.conversationId;
-        setActiveCid(newId);
-        const autoTitle = ((text || (imagePreview ? 'Image message' : '') || 'New Chat')).slice(0, 60);
-        setChatName(autoTitle);
-        setConvs((prev) => [{ id: newId, title: autoTitle, updated_at: new Date().toISOString() }, ...prev]);
+
+      // Streaming assembly
+      let assistantAdded = false;
+      let acc = "";
+      const willStream = res.ok && !!res.body;
+      const ensureAssistant = () => {
+        if (assistantAdded) return;
+        setMessages((m) => {
+          const updated: Msg[] = [...m, { role: "assistant", content: "" }];
+          const id = activeCid || cidBefore;
+          if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
+          // Only animate in non-streaming fallback mode; streaming already progressively updates.
+          if (!willStream) setAnimateIndex(updated.length - 1);
+          return updated;
+        });
+        assistantAdded = true;
+      };
+
+      setStreaming(willStream);
+      if (willStream) {
+        // Ensure we never trigger a post-stream Typewriter re-render.
+        setAnimateIndex(null);
+      }
+      if (!willStream) {
+        const bodyText = await res.text().catch(() => "Sorry, I couldn’t respond.");
+        ensureAssistant();
+        acc = bodyText || "Sorry, I couldn’t respond.";
+        setMessages((m) => {
+          const updated = [...m];
+          const last = updated[updated.length - 1];
+          if (last && last.role === "assistant") last.content = acc;
+          const id = activeCid || cidBefore;
+          if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
+          return updated as Msg[];
+        });
+      } else {
+        ensureAssistant();
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          if (!chunk) continue;
+          acc += chunk;
+          setMessages((m) => {
+            const updated = [...m];
+            const last = updated[updated.length - 1];
+            if (last && last.role === "assistant") last.content = acc;
+            const id = activeCid || cidBefore;
+            if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
+            return updated as Msg[];
+          });
+        }
+      }
+      // End of streaming (success or error path)
+      setStreaming(false);
+
+      // Post-stream auto title rename
+      if (cidBefore) {
+        const current = convs.find(c => c.id === cidBefore);
+        const needsRename = !current?.title || current.title === 'New Chat' || /Chat on \d{1,2}\//.test(current.title);
+        if (needsRename) {
+          const autoTitleRaw = (text || (hadImage ? 'Image message' : '') || 'New Chat');
+          const autoTitle = autoTitleRaw.slice(0, 60);
+          if (autoTitle && autoTitle !== 'New Chat') {
+            try {
+              const updated = await renamePublicConversation(slug, cidBefore, autoTitle);
+              setConvs((prev) => prev.map(c => c.id === cidBefore ? { ...c, title: updated.title, updated_at: updated.updated_at } : c));
+              setChatName(updated.title);
+            } catch (e) {
+              console.warn('auto rename (existing) failed', e);
+            }
+          }
+        }
       }
     } catch (e: any) {
       setMessages((m) => {
@@ -249,8 +312,8 @@ export default function ModernChatUI({
           <button
             onClick={async () => {
               try {
-                const now = new Date();
-                const titleSuggestion = `Chat on ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                // Create a neutral-titled conversation; we'll rename after first message
+                const titleSuggestion = 'New Chat';
                 const resp = await fetch(`/api/bots/${encodeURIComponent(slug)}/conversations`, {
                   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: titleSuggestion })
                 });
@@ -377,6 +440,7 @@ export default function ModernChatUI({
               radius={radius}
               typing={typingIndicator && loading && i === messages.length - 1}
               animate={m.role === 'assistant' && i === animateIndex}
+              streaming={streaming && i === messages.length - 1 && m.role === 'assistant'}
             />
           ))}
           {typingIndicator && loading && (
@@ -466,6 +530,7 @@ function ChatBubble({
   radius,
   typing,
   animate,
+  streaming,
 }: {
   role: "user" | "assistant";
   content: string;
@@ -473,6 +538,7 @@ function ChatBubble({
   radius: string;
   typing?: boolean;
   animate?: boolean;
+  streaming?: boolean;
 }) {
   const isUser = role === "user";
 
@@ -486,7 +552,7 @@ function ChatBubble({
       >
         {isUser ? (
           <RenderedMessage content={content} light={true} />
-        ) : animate ? (
+        ) : animate && !streaming ? (
           <Typewriter content={content} />
         ) : (
           <RenderedMessage content={content} light={true} />

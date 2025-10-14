@@ -14,6 +14,8 @@ export default function ChatClient({ bot }: { bot: BotLite }) {
     <PersistentChat
       slug={bot.slug}
       name={bot.name}
+      directive={bot.directive}
+      knowledgeBase={bot.knowledge_base}
       avatarUrl={bot.avatar_url}
       brandColor={bot.brand_color || "#3b76f6ff"}
       bubbleStyle={bot.bubble_style || "rounded"}

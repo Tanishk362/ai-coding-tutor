@@ -53,8 +53,9 @@ export function ChatPreview({
 
   const send = async () => {
     if (loading) return; // block multiple sends until reply
-    if (!input.trim() && !imagePreview) return;
     const text = input.trim();
+    // Allow sending image with or without text
+    if (!text && !imagePreview) return;
     setInput("");
     // If there's an attached image, embed as markdown inline with the text (preview-only)
     const content = imagePreview ? `${text ? text + "\n\n" : ""}![uploaded image](${imagePreview})` : text;
@@ -205,7 +206,7 @@ export function ChatPreview({
           <div className="mt-2 flex items-center gap-3 text-sm">
             <img src={imagePreview} alt="preview" className="h-14 w-14 object-cover rounded" />
             <div className="flex gap-2">
-              <button type="button" className="px-2 py-1 border rounded-md border-gray-700" onClick={send}>Attach</button>
+              <button type="button" className="px-2 py-1 border rounded-md border-gray-700" onClick={send}>Send with Photo</button>
               <button type="button" className="px-2 py-1 border rounded-md border-gray-700" onClick={() => { setImagePreview(null); if (fileRef.current) fileRef.current.value = ""; }}>Cancel</button>
             </div>
           </div>

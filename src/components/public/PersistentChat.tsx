@@ -14,6 +14,8 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
   const {
     slug,
     name,
+    directive,
+    knowledgeBase,
     avatarUrl,
     brandColor,
     bubbleStyle,
@@ -45,6 +47,14 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Voice/Reatime
+  const [voiceActive, setVoiceActive] = useState(false);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null);
+  const [transcript, setTranscript] = useState<string>("");
+  const [partial, setPartial] = useState<string>("");
   const radius = bubbleStyle === "square" ? "rounded-md" : "rounded-2xl";
 
   // Light mode toggle (UI only)
@@ -81,12 +91,12 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
         let cachedMessages: Record<string, Msg[]> = {};
         if (typeof window !== 'undefined') {
           const raw = localStorage.getItem(sessionsKey);
-            if (raw) {
-              try {
-                const parsed = JSON.parse(raw) as { convs?: Array<{id:string; title:string; updated_at:string}>; messages?: Record<string, Msg[]> };
-                if (parsed?.convs) { setConvs(parsed.convs); cachedConvs = parsed.convs; }
-                if (parsed?.messages) { setMessageCache(parsed.messages); cachedMessages = parsed.messages; }
-              } catch {}
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw) as { convs?: Array<{id:string; title:string; updated_at:string}>; messages?: Record<string, Msg[]> };
+              if (parsed?.convs) { setConvs(parsed.convs); cachedConvs = parsed.convs; }
+              if (parsed?.messages) { setMessageCache(parsed.messages); cachedMessages = parsed.messages; }
+            } catch {}
           }
         }
         const rows = await listPublicConversations(slug, { pageSize: 50 });
@@ -167,6 +177,183 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
     }
   }
 
+  // ——— Voice: OpenAI Realtime via WebRTC ———
+  async function startVoice() {
+    if (voiceActive) return;
+    try {
+      // 1) Ask backend for an ephemeral session
+      const sessRes = await fetch("/api/realtime/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }),
+      });
+      const sess = await sessRes.json();
+      if (!sessRes.ok) throw new Error(sess?.error || "Failed to get session");
+
+      // 2) Prepare WebRTC peer connection
+      const pc = new RTCPeerConnection();
+      pcRef.current = pc;
+      const audioEl = new Audio();
+      audioEl.autoplay = true;
+      audioElRef.current = audioEl;
+      pc.ontrack = (event) => {
+        const [stream] = event.streams;
+        if (audioElRef.current) {
+          audioElRef.current.srcObject = stream;
+          // Try to immediately play when a remote track arrives (user clicked the mic button)
+          audioElRef.current
+            .play()
+            .catch(() => {
+              /* some browsers require a second user gesture; UI button already counts */
+            });
+        }
+      };
+
+      // Ensure we explicitly request a remote audio track (recvonly) for unified-plan
+      try {
+        pc.addTransceiver("audio", { direction: "recvonly" });
+      } catch {}
+
+      // 3) Mic stream
+      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = mic;
+      for (const track of mic.getTracks()) pc.addTrack(track, mic);
+
+      // 4) Data channel for events (transcripts)
+      //    The server may create the channel, so handle both cases.
+      const wireChannel = (channel: RTCDataChannel) => {
+        dcRef.current = channel;
+        // Track simple state for a single turn
+        let vadStopped = false;
+        let finalText: string | null = null;
+        let responseRequested = false;
+
+        const maybeRequestResponse = async () => {
+          if (responseRequested) return;
+          // Prefer to wait for final transcript; otherwise send a fallback
+          if (finalText) {
+            responseRequested = true;
+            const convoId = await ensureConversation();
+            let ground: any = null;
+            try {
+              const groundRes = await fetch("/api/realtime/ground", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ slug, conversationId: convoId, transcript: finalText, topN: 3 }),
+              });
+              ground = await groundRes.json();
+            } catch {}
+            const ctx = ground?.context as string | undefined;
+            const persona = (name || slug || "assistant").toString();
+            const basePersona = `You are ${persona}, the helpful assistant for ${name || slug}. Always speak in first-person as ${persona}.`;
+            const dir = (directive || "").trim();
+            const kb = (knowledgeBase || "").trim();
+            const sys = [basePersona, dir ? dir : "", kb ? `Background Knowledge:\n${kb}` : ""].filter(Boolean).join("\n\n");
+            const instructions = ctx
+              ? `${sys}\n\nUse the following retrieved context to answer accurately. If context is insufficient, say so and proceed.\n\n${ctx}\n\nUser: ${finalText}`
+              : `${sys}\n\nUser: ${finalText}`;
+            dcRef.current?.send(
+              JSON.stringify({ type: "response.create", response: { modalities: ["text", "audio"], instructions } })
+            );
+          } else if (vadStopped) {
+            // If VAD ended but no transcript yet, still request a response so the user hears something.
+            responseRequested = true;
+            const persona = (name || slug || "assistant").toString();
+            const dir = (directive || "").trim();
+            const kb = (knowledgeBase || "").trim();
+            const fallbackInstr = `You are ${persona}, the helpful assistant for ${name || slug}. ${dir ? dir + " " : ""}${kb ? `Use the following background knowledge if relevant: ${kb.slice(0, 1200)}` : ""}`;
+            dcRef.current?.send(
+              JSON.stringify({ type: "response.create", response: { modalities: ["text", "audio"], instructions: fallbackInstr } })
+            );
+          }
+        };
+
+        const resetTurn = () => {
+          vadStopped = false;
+          finalText = null;
+          responseRequested = false;
+          setPartial("");
+        };
+        channel.onmessage = async (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            // Recognize a variety of event names used by OpenAI Realtime
+            const t = (msg?.type || "") as string;
+            if ((t.includes("transcript.partial") || t.includes("transcription.delta")) && (msg.text || msg.delta)) {
+              setPartial(msg.text || msg.delta);
+            }
+            if ((t.includes("transcript.final") || t.includes("transcription.completed")) && (msg.text || msg.transcript)) {
+              const text: string = msg.text || msg.transcript;
+              finalText = text;
+              setPartial("");
+              setTranscript((prev) => (prev ? prev + "\n" : "") + text);
+              await maybeRequestResponse();
+            }
+            // When speech starts, reset state for the next turn
+            if (t.includes("speech_started") || (t.includes("vad") && t.includes("started")) || t.includes("input_audio_buffer.speech_started")) {
+              resetTurn();
+              return;
+            }
+            if (t.includes("speech_stopped") || t.includes("vad") && t.includes("stopped")) {
+              vadStopped = true;
+              // Wait a short beat to allow a final transcript event to arrive
+              setTimeout(() => {
+                void maybeRequestResponse();
+              }, 250);
+            }
+            // When a response is done, get ready for the next turn
+            if (t.includes("response.completed") || t.includes("response.done") || t.includes("response.output_audio.done") || t.includes("response.output_text.done")) {
+              resetTurn();
+              return;
+            }
+          } catch {
+            // non-JSON or unrecognized
+          }
+        };
+      };
+      // If the server creates the data channel
+      pc.ondatachannel = (ev) => {
+        if (ev.channel?.label === "oai-events") wireChannel(ev.channel);
+      };
+      // Also create one proactively; server will use the same label
+      let dc = pc.createDataChannel("oai-events");
+      wireChannel(dc);
+
+      // 5) Negotiate SDP with OpenAI Realtime
+      const baseUrl = "https://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview";
+      const offer = await pc.createOffer({ offerToReceiveAudio: true });
+      await pc.setLocalDescription(offer);
+      const sdp = offer.sdp;
+      const res = await fetch(baseUrl, {
+        method: "POST",
+        body: sdp,
+        headers: {
+          Authorization: `Bearer ${sess.client_secret?.value || sess.client_secret}`,
+          "Content-Type": "application/sdp",
+          "OpenAI-Beta": "realtime=v1",
+        },
+      });
+      if (!res.ok) throw new Error(`Realtime negotiate failed: ${res.status}`);
+      const answer = await res.text();
+      await pc.setRemoteDescription({ type: "answer", sdp: answer });
+
+      setVoiceActive(true);
+    } catch (e) {
+      console.warn("startVoice error", e);
+      stopVoice();
+    }
+  }
+
+  function stopVoice() {
+    setVoiceActive(false);
+    setPartial("");
+    pcRef.current?.getSenders().forEach((s) => s.track && s.track.stop());
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    micStreamRef.current = null;
+    pcRef.current?.close();
+    pcRef.current = null;
+  }
+
   async function sendText(content: string) {
   // Prevent sending while waiting for a reply
   if (loading) return;
@@ -183,34 +370,85 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
     });
     setLoading(true);
     try {
-  // Keep last 13 messages (user/assistant) and append the new user message => 14 total context window
-  const history: Msg[] = messages.slice(-13);
+      // Keep last 13 messages (user/assistant) and append the new user message => 14 total context window
+      const history: Msg[] = messages.slice(-13);
       const payload = [...history, { role: "user", content: text }];
       const res = await fetch(`/api/bots/${encodeURIComponent(slug)}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: payload, conversationId: cidBefore ?? undefined }),
       });
-      const data = await res.json();
-      let reply = res.ok ? data.reply || "" : data.error || "Sorry, I couldn’t respond.";
-      if (containsImage && !/\bvision\b/i.test((props as any)?.model || '')) {
-        // Append helper guidance if model likely not multimodal
-        reply = reply || "I see you've uploaded an image, but I'm unable to analyze images directly. Please describe it in text.";
+
+      // Prepare a streaming assistant message placeholder
+      let assistantAdded = false;
+      let acc = "";
+      const ensureAssistant = () => {
+        if (assistantAdded) return;
+        setMessages((m) => {
+          const updated: Msg[] = [...m, { role: "assistant", content: "" }];
+          const id = activeCid || cidBefore;
+          if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
+          return updated;
+        });
+        assistantAdded = true;
+      };
+
+      if (!res.ok || !res.body) {
+        const bodyText = await res.text().catch(() => "Sorry, I couldn’t respond.");
+        ensureAssistant();
+        acc = bodyText || "Sorry, I couldn’t respond.";
+        setMessages((m) => {
+          const updated = [...m];
+          const last = updated[updated.length - 1];
+          if (last && last.role === "assistant") last.content = acc;
+          const id = activeCid || cidBefore;
+          if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
+          return updated as Msg[];
+        });
+      } else {
+        ensureAssistant();
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          if (!chunk) continue;
+          acc += chunk;
+          setMessages((m) => {
+            const updated = [...m];
+            const last = updated[updated.length - 1];
+            if (last && last.role === "assistant") last.content = acc;
+            const id = activeCid || cidBefore;
+            if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
+            return updated as Msg[];
+          });
+        }
       }
-      setMessages((m) => {
-        const updated: Msg[] = [...m, { role: "assistant", content: reply }];
-        const id = activeCid || cidBefore || data?.conversationId;
-        if (id) setMessageCache((c) => ({ ...c, [id]: updated }));
-        return updated;
-      });
-      // Capture server-created conversation id if we didn't have one
-      if (!cidBefore && data?.conversationId) {
-        const newId: string = data.conversationId;
-        setActiveCid(newId);
-        // Provisional auto title based on first user message (truncate 60 chars)
-        const autoTitle = (text || 'New Chat').slice(0, 60);
-        setChatName(autoTitle);
-        setConvs((prev) => [{ id: newId, title: autoTitle, updated_at: new Date().toISOString() }, ...prev]);
+
+      // Post-stream: if conversation still has default title, auto-rename from first user line
+      if (cidBefore) {
+        const currentConv = convs.find(c => c.id === cidBefore);
+        const hasDefaultTitle = currentConv?.title === 'New Chat' || !currentConv;
+        if (hasDefaultTitle) {
+          const autoTitle = (text.replace(/!\[[^\]]*\]\([^\)]+\)/g, '').trim() || 'New Chat').slice(0, 60);
+          if (autoTitle !== 'New Chat') {
+            setChatName(autoTitle);
+            setConvs((prev) => prev.map(c => c.id === cidBefore ? { ...c, title: autoTitle, updated_at: new Date().toISOString() } : c));
+            try {
+              const response = await fetch(`/api/bots/${encodeURIComponent(slug)}/conversations/${cidBefore}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: autoTitle }),
+              });
+              if (response.ok) {
+                console.log('Auto-renamed conversation to:', autoTitle);
+              }
+            } catch (e) {
+              console.warn('Auto-rename failed', e);
+            }
+          }
+        }
       }
     } catch (e: any) {
       setMessages((m) => {
@@ -227,6 +465,11 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
     e.preventDefault();
   // Prevent sending while waiting for a reply
   if (loading) return;
+    // If there's an image preview, use sendImageWithText instead
+    if (imagePreview) {
+      sendImageWithText();
+      return;
+    }
     const v = inputRef.current?.value ?? "";
     if (inputRef.current) inputRef.current.value = "";
     sendText(v);
@@ -279,8 +522,8 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
   async function onNewChat() {
     try {
       if (activeCid) setMessageCache((c) => ({ ...c, [activeCid]: messages }));
-      const now = new Date();
-      const titleSuggestion = `Chat on ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      // Start with a generic title - it will be updated after the first user message
+      const titleSuggestion = 'New Chat';
       const resp = await fetch(`/api/bots/${encodeURIComponent(slug)}/conversations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -358,20 +601,29 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
     reader.onload = () => setImagePreview(reader.result as string);
     reader.readAsDataURL(f);
   }
-  async function sendImage() {
+  async function sendImageWithText() {
     if (loading) return; // don't allow attaching while waiting
     if (!imagePreview) return;
-    // Embed the image as Markdown so it renders similarly to ChatGPT behavior for inline content.
-    const md = `![uploaded image](${imagePreview})`;
-    await sendText(md);
+    const text = inputRef.current?.value?.trim() || "";
+    // Embed the image as Markdown with optional text
+    const md = text ? `${text}\n\n![uploaded image](${imagePreview})` : `![uploaded image](${imagePreview})`;
+    if (inputRef.current) inputRef.current.value = "";
     setImagePreview(null);
     if (fileRef.current) fileRef.current.value = "";
+    await sendText(md);
   }
 
   const headerTitle = useMemo(() => name || "Chatbot", [name]);
 
   return (
     <div className={`relative flex h-[100dvh] ${bgMain}`}>
+      {/* Hidden audio element for realtime TTS playback */}
+      <audio
+        ref={audioElRef as any}
+        autoPlay
+        playsInline
+        style={{ display: 'none' }}
+      />
       {/* Mobile overlay */}
       {sidebarOpen && (
         <button
@@ -512,14 +764,28 @@ export default function PersistentChat(props: PublicChatProps & { botId: string 
           <div className="flex items-center gap-2">
             <input ref={inputRef} className={`flex-1 border ${borderInput} ${light ? "bg-white text-black" : "bg-[#141414] text-white"} rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 text-sm md:text-base transition-shadow focus:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]`} placeholder={tagline || "Ask your AI Teacher…"} />
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+            <button
+              type="button"
+              title={voiceActive ? "Stop voice" : "Start voice"}
+              onClick={() => (voiceActive ? stopVoice() : startVoice())}
+              className={`px-2 py-2 border rounded-xl ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}
+              aria-pressed={voiceActive}
+            >
+              {voiceActive ? "🔴" : "🎤"}
+            </button>
             <button type="button" onClick={onPickImage} className={`px-2 py-2 border rounded-xl ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`}>📷</button>
             <button type="submit" disabled={loading} className="px-3 py-2 border rounded-xl text-sm md:text-base transition-shadow hover:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]" style={{ borderColor: brandColor, color: brandColor }}>{loading ? 'Waiting…' : 'Send'}</button>
           </div>
+          {(partial || transcript) && (
+            <div className="mt-2 text-xs text-gray-400 whitespace-pre-wrap">
+              {partial ? `Listening: ${partial}` : transcript}
+            </div>
+          )}
           {imagePreview && (
             <div className="mt-2 flex items-center gap-3 text-sm">
               <img src={imagePreview} alt="preview" className="h-14 w-14 object-cover rounded" />
               <div className="flex gap-2">
-                <button type="button" className={`px-2 py-1 border rounded-xl ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`} onClick={sendImage}>Attach</button>
+                <button type="button" className={`px-2 py-1 border rounded-xl ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`} onClick={sendImageWithText}>Send with Photo</button>
                 <button type="button" className={`px-2 py-1 border rounded-xl ${borderInput} transition-colors ${light ? "hover:bg-gray-100" : "hover:bg-[#141414]"}`} onClick={() => { setImagePreview(null); if (fileRef.current) fileRef.current.value = ""; }}>Cancel</button>
               </div>
             </div>
