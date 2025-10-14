@@ -49,7 +49,7 @@ async function ensureOwnerByMessage(db: any, mid: string, userId: string) {
   return { status: 200, msg } as const;
 }
 
-// Next.js 15: context params are provided as a Promise
+// Next.js 15 app router: params are provided as a Promise in some environments
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ mid: string }> }) {
   try {
     const { mid } = await ctx.params;

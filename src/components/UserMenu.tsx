@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/src/lib/supabase";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 
 export function UserMenu() {
   const [email, setEmail] = useState<string | null>(null);
@@ -13,7 +14,10 @@ export function UserMenu() {
       if (!mounted) return;
       setEmail(data.user?.email ?? null);
     })();
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((
+      _event: AuthChangeEvent,
+      session: Session | null
+    ) => {
       setEmail(session?.user?.email ?? null);
     });
     return () => {

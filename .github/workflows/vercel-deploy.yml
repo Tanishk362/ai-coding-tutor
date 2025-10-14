@@ -2,6 +2,50 @@ name: Deploy to Vercel
 
 on:
   push:
+    branches:
+      - main
+      - master
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  deploy:
+    name: Vercel Deploy
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull Vercel Environment Information
+        run: npx vercel pull --yes --environment=${{ github.event_name == 'pull_request' && 'preview' || 'production' }} --token=$VERCEL_TOKEN
+
+      - name: Build Project Artifacts
+        run: npx vercel build --token=$VERCEL_TOKEN
+
+      - name: Deploy to Vercel
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npx vercel deploy --prebuilt --token=$VERCEL_TOKEN --archive=tgz --target=preview
+          else
+            npx vercel deploy --prebuilt --token=$VERCEL_TOKEN --archive=tgz --target=production
+          fi
+name: Deploy to Vercel
+
+on:
+  push:
     branches: [ main ]
   workflow_dispatch:
 
