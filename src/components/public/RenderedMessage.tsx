@@ -161,8 +161,7 @@ function normalizeMath(raw: string): string {
     const last = dd[dd.length - 1];
     txt = txt.slice(0, last) + txt.slice(last + 2);
   }
-  // If text ends with a dangling '$$' (common when LLMs append a closing marker), drop it
-  txt = txt.replace(/\$\$\s*$/g, '');
+  // Do not blindly strip trailing '$$'. We'll rely on the odd-count balance above to remove only unmatched delimiters.
   // 5) If a closing right lacks a delimiter (e.g., "\\right " or "\\right_"), coerce to evaluation bar
   txt = txt.replace(/\\right(?![\s\S])/g, '\\right\\|');
   txt = txt.replace(/\\right(\s*[_^])/g, '\\right\\|$1');
