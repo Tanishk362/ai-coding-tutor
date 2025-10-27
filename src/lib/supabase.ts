@@ -2,19 +2,12 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const URL =
-  (typeof process !== "undefined" && process.env.VITE_SUPABASE_URL) ||
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_SUPABASE_URL) ||
-  "";
-const KEY =
-  (typeof process !== "undefined" && process.env.VITE_SUPABASE_ANON_KEY) ||
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) ||
-  "";
+const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!URL || !KEY) {
-  // Throwing makes it very clear in dev what went wrong
   throw new Error(
-    "Missing Supabase env vars. Set VITE_SUPABASE_URL/ANON_KEY or NEXT_PUBLIC_SUPABASE_URL/ANON_KEY"
+    "❌ Missing Supabase env vars. Make sure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in Vercel."
   );
 }
 
